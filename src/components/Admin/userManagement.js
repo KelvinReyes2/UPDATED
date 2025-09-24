@@ -7,6 +7,7 @@ import {
 import { Outlet, useLocation } from "react-router-dom";
 import DataTable from "react-data-table-component";
 import { FaEdit } from "react-icons/fa";
+import { query, where, getDocs } from "firebase/firestore";
 import "jspdf-autotable";
 import { db } from "../../firebase";
 import {
@@ -437,10 +438,11 @@ export default function UserManagement() {
       lastName: "",
       email: "",
       password: "",
-      role: "Driver", // Role set to Driver by default
+      role: "Driver",
       status: "Active",
       address: "",
       telNo: "",
+      permissions: rolePermissionsMap["Driver"],
     });
     setErrors({});
   };
@@ -466,7 +468,6 @@ export default function UserManagement() {
     }
   };
 
-  // Create auth user then add Firestore profile
   const saveUser = async () => {
     const e = {};
     if (!form.firstName.trim()) e.firstName = "Required";
@@ -475,12 +476,28 @@ export default function UserManagement() {
     if (!form.password.trim()) e.password = "Required";
     if (form.password && form.password.length < 6)
       e.password = "Min 6 characters";
+    if (!form.telNo.trim()) e.telNo = "Required"; // ensure phone is not empty
+
     setErrors(e);
     if (Object.keys(e).length) return;
 
     setSaving(true);
     try {
-      // Create Firebase Auth user
+      // 🔍 Check if phone number already exists in Firestore
+      const usersRef = collection(db, "users");
+      const phoneQuery = query(
+        usersRef,
+        where("telNo", "==", form.telNo.trim())
+      );
+      const phoneSnapshot = await getDocs(phoneQuery);
+
+      if (!phoneSnapshot.empty) {
+        alert("Phone number is already in use.");
+        setSaving(false);
+        return;
+      }
+
+      // ✅ Create Firebase Auth user (will fail if email is duplicate)
       const cred = await createUserWithEmailAndPassword(
         auth,
         form.email.trim(),
@@ -517,9 +534,11 @@ export default function UserManagement() {
       closeAdd();
     } catch (err) {
       console.error("Error saving user:", err);
-      if (err.code === "auth/email-already-in-use")
+      if (err.code === "auth/email-already-in-use") {
         alert("Email is already in use.");
-      else alert(err.message || "Failed to save user.");
+      } else {
+        alert(err.message || "Failed to save user.");
+      }
     } finally {
       setSaving(false);
     }
@@ -535,6 +554,21 @@ export default function UserManagement() {
 
     setSavingEdit(true);
     try {
+      if (edit.telNo) {
+        const usersRef = collection(db, "users");
+        const phoneQuery = query(usersRef, where("telNo", "==", edit.telNo));
+        const phoneSnapshot = await getDocs(phoneQuery);
+
+        if (
+          !phoneSnapshot.empty &&
+          phoneSnapshot.docs[0].id !== String(viewing.id)
+        ) {
+          alert("This phone number is already in use by another user.");
+          setSavingEdit(false);
+          return;
+        }
+      }
+
       // Update Firestore user
       await setDoc(
         doc(db, "users", String(viewing.id)),
@@ -949,17 +983,23 @@ export default function UserManagement() {
               </div>
 
               <div className="col-span-1">
-                <label className="block text-sm text-gray-600 mb-1">Role</label>
+                <label className="block text-gray-600 mb-1">Role</label>
                 <select
-                  name="role"
+                  className="w-full border rounded-md px-3 py-2 border-gray-200 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300"
                   value={form.role}
-                  onChange={onForm}
-                  className="w-full border rounded-md px-3 py-2 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300"
+                  onChange={(e) => {
+                    const selectedRole = e.target.value;
+                    setForm({
+                      ...form,
+                      role: selectedRole,
+                      permissions: rolePermissionsMap[selectedRole] || [],
+                    });
+                  }}
                 >
                   <option value="Driver">Driver</option>
-                  <option value="Cashier">Cashier</option>
                   <option value="Reliever">Reliever</option>
                   <option value="Inspector">Inspector</option>
+                  <option value="Cashier">Cashier</option>
                 </select>
               </div>
 
@@ -969,14 +1009,18 @@ export default function UserManagement() {
                 </label>
                 <select
                   className="w-full border rounded-md px-3 py-2 bg-gray-100 cursor-not-allowed focus:outline-none"
-                  value={permissions.join(", ")}
+                  value={form.permissions} // 👈 bind to form.permissions
                   disabled
                   multiple
                   style={{
-                    height: `${permissions.length === 1 ? 3 * 14 : permissions.length * 2.5 * 14}px`,
+                    height: `${
+                      form.permissions.length === 1
+                        ? 3 * 14
+                        : form.permissions.length * 2.5 * 14
+                    }px`,
                   }}
                 >
-                  {permissions.map((p) => (
+                  {form.permissions.map((p) => (
                     <option key={p} value={p}>
                       {p}
                     </option>

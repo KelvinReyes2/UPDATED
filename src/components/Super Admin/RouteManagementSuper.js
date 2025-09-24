@@ -1,8 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import DataTable from "react-data-table-component";
-
 import { db } from "../../firebase";
-import { collection, onSnapshot, doc, setDoc } from "firebase/firestore";
+import {
+  collection,
+  onSnapshot,
+  doc,
+  setDoc,
+  query,
+  where,
+  getDocs,
+} from "firebase/firestore";
 import { exportToCSV, exportToPDF } from "../functions/exportFunctions";
 import { getAuth } from "firebase/auth";
 
@@ -451,19 +458,35 @@ export default function RouteManagementSuper() {
 
     setSaving(true);
     try {
+      const q = query(
+        collection(db, "routes"),
+        where("Route", "==", form.Route.trim()),
+        where("Particular", "==", form.Particular.trim()),
+        where("Barangay", "==", form.Barangay.trim()),
+        where("KM", "==", Number(form.KM))
+      );
+
+      const snapshot = await getDocs(q);
+
+      if (!snapshot.empty) {
+        setSaving(false);
+        alert("This exact route already exists.");
+        return;
+      }
+
       const nextId = maxRouteId + 1;
       await setDoc(doc(db, "routes", String(nextId)), {
         routeId: nextId,
-        Route: form.Route,
-        Barangay: form.Barangay,
-        Particular: form.Particular,
+        Route: form.Route.trim(),
+        Particular: form.Particular.trim(),
+        Barangay: form.Barangay.trim(),
         KM: Number(form.KM),
         Status: form.Status || "Active",
       });
-      closeAdd();
 
+      closeAdd();
       setShowAddToast(true);
-      setShowAddToast(false);
+      setTimeout(() => setShowAddToast(false), 3000);
     } catch (e) {
       alert(e.message || String(e));
     } finally {
@@ -474,31 +497,20 @@ export default function RouteManagementSuper() {
   // -------------- Save Edits from View Modal --------------
   const saveEdits = async () => {
     if (!viewing || !edit) return;
-    if (!edit.Route || !edit.Barangay || !edit.Particular) {
-      alert("Please fill Route, Barangay and Particular.");
-      return;
-    }
-    if (edit.KM === "" || isNaN(Number(edit.KM))) {
-      alert("KM must be a number.");
-      return;
-    }
+
     setSavingEdit(true);
     try {
       await setDoc(
         doc(db, "routes", String(viewing.id)),
         {
-          Route: edit.Route,
-          Barangay: edit.Barangay,
-          Particular: edit.Particular,
-          KM: Number(edit.KM),
           Status: edit.Status || "Active",
         },
         { merge: true }
       );
+
       setViewing(null);
       setEdit(null);
 
-      // Show the success toast animation for edit
       setShowEditToast(true);
       setTimeout(() => setShowEditToast(false), 3000);
     } catch (e) {
@@ -1004,11 +1016,9 @@ export default function RouteManagementSuper() {
                           Route
                         </label>
                         <input
-                          className="w-full border rounded-md px-3 py-2 border-gray-200 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300"
+                          className="w-full border rounded-md px-3 py-2 border-gray-200 bg-gray-100 text-gray-500 cursor-not-allowed"
                           value={edit.Route}
-                          onChange={(e) =>
-                            setEdit({ ...edit, Route: e.target.value })
-                          }
+                          disabled
                         />
                       </div>
 
@@ -1017,11 +1027,9 @@ export default function RouteManagementSuper() {
                           Barangay
                         </label>
                         <input
-                          className="w-full border rounded-md px-3 py-2 border-gray-200 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300"
+                          className="w-full border rounded-md px-3 py-2 border-gray-200 bg-gray-100 text-gray-500 cursor-not-allowed"
                           value={edit.Barangay}
-                          onChange={(e) =>
-                            setEdit({ ...edit, Barangay: e.target.value })
-                          }
+                          disabled
                         />
                       </div>
 
@@ -1030,11 +1038,9 @@ export default function RouteManagementSuper() {
                           Particular
                         </label>
                         <input
-                          className="w-full border rounded-md px-3 py-2 border-gray-200 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300"
+                          className="w-full border rounded-md px-3 py-2 border-gray-200 bg-gray-100 text-gray-500 cursor-not-allowed"
                           value={edit.Particular}
-                          onChange={(e) =>
-                            setEdit({ ...edit, Particular: e.target.value })
-                          }
+                          disabled
                         />
                       </div>
 
@@ -1043,11 +1049,9 @@ export default function RouteManagementSuper() {
                         <input
                           type="number"
                           min="0"
-                          className="w-full border rounded-md px-3 py-2 border-gray-200 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300"
+                          className="w-full border rounded-md px-3 py-2 border-gray-200 bg-gray-100 text-gray-500 cursor-not-allowed"
                           value={edit.KM}
-                          onChange={(e) =>
-                            setEdit({ ...edit, KM: e.target.value })
-                          }
+                          disabled
                         />
                       </div>
 

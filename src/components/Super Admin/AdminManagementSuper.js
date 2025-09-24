@@ -9,7 +9,15 @@ import DataTable from "react-data-table-component";
 import { FaEdit } from "react-icons/fa";
 
 import { db } from "../../firebase";
-import { collection, onSnapshot, doc, setDoc } from "firebase/firestore";
+import {
+  collection,
+  onSnapshot,
+  doc,
+  setDoc,
+  query,
+  where,
+  getDocs,
+} from "firebase/firestore";
 import { exportToCSV, exportToPDF } from "../functions/exportFunctions";
 
 const auth = getAuth();
@@ -363,11 +371,23 @@ export default function AdminManagementSuper() {
     if (!form.password.trim()) e.password = "Required";
     if (form.password && form.password.length < 6)
       e.password = "Min 6 characters";
+    if (!form.telNo.trim()) e.telNo = "Required";
     setErrors(e);
     if (Object.keys(e).length) return;
 
     setSaving(true);
     try {
+      const q = query(
+        collection(db, "users"),
+        where("telNo", "==", form.telNo.trim())
+      );
+      const snapshot = await getDocs(q);
+      if (!snapshot.empty) {
+        alert("Phone number is already in use.");
+        setSaving(false);
+        return;
+      }
+
       const cred = await createUserWithEmailAndPassword(
         auth,
         form.email.trim(),
@@ -377,7 +397,7 @@ export default function AdminManagementSuper() {
 
       try {
         await updateProfile(user, {
-          displayName: `${form.firstName} ${form.lastName}`,
+          displayName: `${form.firstName.trim()} ${form.lastName.trim()}`,
         });
       } catch {}
 
@@ -400,7 +420,11 @@ export default function AdminManagementSuper() {
 
       closeAdd();
     } catch (err) {
-      alert(err.message || String(err));
+      if (err.code === "auth/email-already-in-use") {
+        alert("Email is already in use.");
+      } else {
+        alert(err.message || String(err));
+      }
     } finally {
       setSaving(false);
     }
@@ -415,18 +439,57 @@ export default function AdminManagementSuper() {
 
     setSavingEdit(true);
     try {
-      // 1) Update Firestore profile
+      const q = query(
+        collection(db, "users"),
+        where("email", "==", edit.email.trim())
+      );
+      const snapshot = await getDocs(q);
+
+      let duplicate = false;
+      snapshot.forEach((docSnap) => {
+        if (docSnap.id !== viewing.id) {
+          duplicate = true;
+        }
+      });
+
+      if (duplicate) {
+        alert("This email is already in use.");
+        setSavingEdit(false);
+        return;
+      }
+
+      if (edit.telNo) {
+        const q2 = query(
+          collection(db, "users"),
+          where("telNo", "==", edit.telNo.trim())
+        );
+        const snapshot2 = await getDocs(q2);
+
+        let phoneDuplicate = false;
+        snapshot2.forEach((docSnap) => {
+          if (docSnap.id !== viewing.id) {
+            phoneDuplicate = true;
+          }
+        });
+
+        if (phoneDuplicate) {
+          alert("This phone number is already in use.");
+          setSavingEdit(false);
+          return;
+        }
+      }
+
       await setDoc(
         doc(db, "users", String(viewing.id)),
         {
-          firstName: edit.firstName,
-          middleName: edit.middleName,
-          lastName: edit.lastName,
-          email: edit.email,
+          firstName: edit.firstName.trim(),
+          middleName: edit.middleName.trim(),
+          lastName: edit.lastName.trim(),
+          email: edit.email.trim(),
           role: "Admin",
           status: edit.status,
-          telNo: edit.telNo,
-          address: edit.address,
+          telNo: edit.telNo.trim(),
+          address: edit.address.trim(),
         },
         { merge: true }
       );
