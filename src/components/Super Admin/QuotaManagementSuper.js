@@ -13,7 +13,7 @@ import {
   getDocs,
   addDoc,
 } from "firebase/firestore";
-import { Wallet, Shield } from "lucide-react"; // ✅ Changed Plus to Shield for authentication
+import { Wallet, Shield, RotateCcw, Calendar } from "lucide-react";
 
 const auth = getAuth();
 
@@ -21,20 +21,25 @@ export default function QuotaManagementSuper() {
   const primaryColor = "#364C6E";
 
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isResetModalOpen, setIsResetModalOpen] = useState(false);
   const [showSuccessToast, setShowSuccessToast] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
 
   const [currentQuota, setCurrentQuota] = useState(0);
+  const [currentQuotaData, setCurrentQuotaData] = useState(null);
   const [newQuota, setNewQuota] = useState("");
   const [confirmQuota, setConfirmQuota] = useState("");
-  const [selectedQuarter, setSelectedQuarter] = useState("Q1"); // Quarter selection
-  const [quotaPeriod, setQuotaPeriod] = useState("quarterly"); // New state for quarterly or yearly
+  const [selectedQuarter, setSelectedQuarter] = useState("Q1");
+  const [quotaPeriod, setQuotaPeriod] = useState("quarterly");
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false); // Track saving state - now only appears after password confirmation
+  const [saving, setSaving] = useState(false);
+  const [resetting, setResetting] = useState(false);
   const [quotaMatchError, setQuotaMatchError] = useState(false);
-  const [password, setPassword] = useState(""); // For storing user password
-  const [passwordError, setPasswordError] = useState(""); // For error messages on password verification
-
+  const [password, setPassword] = useState("");
+  const [resetPassword, setResetPassword] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+  const [resetPasswordError, setResetPasswordError] = useState("");
+  
   // Fetch latest quota document to display current quota
   useEffect(() => {
     const fetchQuota = async () => {
@@ -47,7 +52,17 @@ export default function QuotaManagementSuper() {
         const snap = await getDocs(q);
         if (!snap.empty) {
           const docSnap = snap.docs[0];
-          setCurrentQuota(parseFloat(docSnap.data().target) || 0);
+          const data = docSnap.data();
+          setCurrentQuota(parseFloat(data.target) || 0);
+          setCurrentQuotaData(data);
+          
+          // Set the current period and quarter from the fetched data
+          if (data.period) {
+            setQuotaPeriod(data.period);
+          }
+          if (data.quarter) {
+            setSelectedQuarter(data.quarter);
+          }
         }
       } catch (e) {
         console.error("Error fetching quota:", e);
@@ -60,51 +75,79 @@ export default function QuotaManagementSuper() {
 
   // Get quarter start and end date based on selected quarter
   const getQuarterDates = (quarter) => {
-    const currentYear = new Date().getFullYear();
+    const today = new Date();
+    const currentYear = today.getFullYear();
+    const currentMonth = today.getMonth(); // 0-based (0 = January, 11 = December)
+    
+    // Determine which quarter we're currently in
+    let currentQuarter;
+    if (currentMonth <= 2) currentQuarter = "Q1"; // Jan-Mar
+    else if (currentMonth <= 5) currentQuarter = "Q2"; // Apr-Jun
+    else if (currentMonth <= 8) currentQuarter = "Q3"; // Jul-Sep
+    else currentQuarter = "Q4"; // Oct-Dec
+    
+    // If setting a quota for a quarter that has already passed this year,
+    // set it for next year
+    const yearToUse = (quarter < currentQuarter || 
+                      (quarter === currentQuarter && today.getDate() > 15)) 
+                     ? currentYear + 1 
+                     : currentYear;
+    
     switch (quarter) {
       case "Q1":
         return {
-          start: new Date(`${currentYear}-01-01`),
-          end: new Date(`${currentYear}-03-31`),
+          start: new Date(`${yearToUse}-01-01`),
+          end: new Date(`${yearToUse}-03-31`),
         };
       case "Q2":
         return {
-          start: new Date(`${currentYear}-04-01`),
-          end: new Date(`${currentYear}-06-30`),
+          start: new Date(`${yearToUse}-04-01`),
+          end: new Date(`${yearToUse}-06-30`),
         };
       case "Q3":
         return {
-          start: new Date(`${currentYear}-07-01`),
-          end: new Date(`${currentYear}-09-30`),
+          start: new Date(`${yearToUse}-07-01`),
+          end: new Date(`${yearToUse}-09-30`),
         };
       case "Q4":
         return {
-          start: new Date(`${currentYear}-10-01`),
-          end: new Date(`${currentYear}-12-31`),
+          start: new Date(`${yearToUse}-10-01`),
+          end: new Date(`${yearToUse}-12-31`),
         };
       default:
         return { start: null, end: null };
     }
   };
 
+  // Format date to readable format (e.g., "March 9, 2025")
+  const formatDate = (date) => {
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+  };
+
+  // Get current quota end date for display using formatted date
+  const getCurrentQuotaEndDate = () => {
+    if (!currentQuotaData?.endDate) return "Not set";
+    return formatDate(currentQuotaData.endDate.toDate());
+  };
+
   // Handle saving quota
   const handleSaveQuota = async () => {
     if (!newQuota || !confirmQuota) {
-      return; // Simply return without saving if fields are empty
-    }
-
-    if (newQuota !== confirmQuota) {
-      setQuotaMatchError(true); // Set error state to true if the quotas don't match
       return;
     }
 
-    setQuotaMatchError(false); // Reset error state if quotas match
+    if (newQuota !== confirmQuota) {
+      setQuotaMatchError(true);
+      return;
+    }
 
-    // Clear password and error before opening modal for fresh authentication
+    setQuotaMatchError(false);
     setPassword("");
     setPasswordError("");
-
-    // Show password prompt modal before saving the quota (no spinner yet)
     setIsModalOpen(true);
   };
 
@@ -115,76 +158,142 @@ export default function QuotaManagementSuper() {
       return;
     }
 
-    setSaving(true); // Start saving spinner only after password is entered
+    setSaving(true);
 
     try {
       const user = auth.currentUser;
       if (user) {
         const credential = EmailAuthProvider.credential(user.email, password);
-        // Reauthenticate the user
         await reauthenticateWithCredential(user, credential);
 
-        // Proceed to save the quota after successful reauthentication
         const value = parseFloat(newQuota);
         if (isNaN(value) || value <= 0) {
-          setQuotaMatchError(true); // Set error state to true if the value is invalid
-          setSaving(false); // Stop saving
-          setIsModalOpen(false); // Close modal
+          setQuotaMatchError(true);
+          setSaving(false);
+          setIsModalOpen(false);
           return;
         }
 
-        // Get the date range based on the selected quarter
-        const { start, end } =
-          quotaPeriod === "quarterly"
-            ? getQuarterDates(selectedQuarter)
-            : {
-                start: new Date(`${new Date().getFullYear()}-01-01`),
-                end: new Date(`${new Date().getFullYear()}-12-31`),
-              };
+        // Calculate dates based on today's date and selected period
+        const today = new Date();
+        let start, end;
 
-        // Add new quota document to the quotaTarget collection with period info
+        if (quotaPeriod === "yearly") {
+          start = new Date(today.getFullYear(), 0, 1); // January 1st of current year
+          end = new Date(today.getFullYear(), 11, 31); // December 31st of current year
+        } else {
+          // For quarterly, use the selected quarter dates with proper year calculation
+          const quarterDates = getQuarterDates(selectedQuarter);
+          start = quarterDates.start;
+          end = quarterDates.end;
+        }
+
         await addDoc(collection(db, "quotaTarget"), {
           target: value.toString(),
           timestamp: new Date(),
-          period: quotaPeriod, // Store whether it's quarterly or yearly
+          period: quotaPeriod,
           quarter: quotaPeriod === "quarterly" ? selectedQuarter : null,
-          startDate: start, // Store as Date object
-          endDate: end, // Store as Date object
+          startDate: start,
+          endDate: end,
         });
 
         setCurrentQuota(value);
+        setCurrentQuotaData({
+          target: value.toString(),
+          period: quotaPeriod,
+          quarter: quotaPeriod === "quarterly" ? selectedQuarter : null,
+          startDate: { toDate: () => start },
+          endDate: { toDate: () => end },
+        });
+        
         setNewQuota("");
         setConfirmQuota("");
-        setPassword(""); // Clear password
-        setPasswordError(""); // Clear password error
+        setPassword("");
+        setPasswordError("");
 
         setToastMessage(`Quota updated successfully!`);
         setShowSuccessToast(true);
         setTimeout(() => setShowSuccessToast(false), 3000);
 
-        setIsModalOpen(false); // Close password modal only on success
+        setIsModalOpen(false);
       }
     } catch (e) {
       console.error("Error reauthenticating or saving quota:", e);
       setPasswordError("Incorrect password. Please try again.");
-      // Don't close modal on error - let user try again
     } finally {
-      setSaving(false); // Stop saving spinner
+      setSaving(false);
+    }
+  };
+
+  // Handle reset quota
+  const handleResetQuota = () => {
+    setResetPassword("");
+    setResetPasswordError("");
+    setIsResetModalOpen(true);
+  };
+
+  // Handle reset password verification
+  const handleResetPasswordSubmit = async () => {
+    if (!resetPassword) {
+      setResetPasswordError("Please enter your password.");
+      return;
+    }
+
+    setResetting(true);
+
+    try {
+      const user = auth.currentUser;
+      if (user) {
+        const credential = EmailAuthProvider.credential(user.email, resetPassword);
+        await reauthenticateWithCredential(user, credential);
+
+        // Reset form fields and enable inputs by clearing current quota data
+        setNewQuota("");
+        setConfirmQuota("");
+        setQuotaMatchError(false);
+        setResetPassword("");
+        setResetPasswordError("");
+        
+        // Clear current quota data to enable fields
+        setCurrentQuotaData(null);
+
+        setToastMessage("Quota fields have been reset. You can now set a new quota.");
+        setShowSuccessToast(true);
+        setTimeout(() => setShowSuccessToast(false), 3000);
+
+        setIsResetModalOpen(false);
+      }
+    } catch (e) {
+      console.error("Error reauthenticating:", e);
+      setResetPasswordError("Incorrect password. Please try again.");
+    } finally {
+      setResetting(false);
     }
   };
 
   // Handle modal close (cancel button)
   const handleCancelModal = () => {
-    setIsModalOpen(false); // Close the modal
-    setPassword(""); // Clear password
-    setPasswordError(""); // Clear password error
-    setSaving(false); // Reset saving state so spinner stops
+    setIsModalOpen(false);
+    setPassword("");
+    setPasswordError("");
+    setSaving(false);
+  };
+
+  // Handle reset modal close
+  const handleCancelResetModal = () => {
+    setIsResetModalOpen(false);
+    setResetPassword("");
+    setResetPasswordError("");
+    setResetting(false);
+  };
+
+  // Check if fields should be disabled - if a quota exists and is set
+  const shouldDisableFields = () => {
+    return currentQuotaData !== null && !newQuota && !confirmQuota;
   };
 
   return (
     <div className="flex bg-gray-100 min-h-screen">
-      {/* Sidebar */}
-
       {/* Main Content */}
       <main className="flex-1 p-10">
         <div className="mx-auto w-full max-w-[1200px]">
@@ -213,13 +322,33 @@ export default function QuotaManagementSuper() {
                       maximumFractionDigits: 2,
                     })}
                   </div>
+                  
+                  {/* Current Quota End Date */}
+                  <div className="mt-6 flex items-center gap-2 text-sm text-gray-600 bg-gray-50 px-4 py-2 rounded-lg">
+                    <Calendar className="w-4 h-4" />
+                    <span className="font-medium">Ends on:</span>
+                    <span>{getCurrentQuotaEndDate()}</span>
+                  </div>
                 </div>
 
                 {/* Quota Change */}
                 <div className="flex flex-col">
-                  <h2 className="text-2xl font-semibold text-gray-600 mb-2">
-                    Quota Change
-                  </h2>
+                  <div className="flex items-center justify-between mb-2">
+                    <h2 className="text-2xl font-semibold text-gray-600">
+                      Quota Change
+                    </h2>
+                    {/* Show reset button only if quota data exists */}
+                    {currentQuotaData && (
+                      <button
+                        onClick={handleResetQuota}
+                        className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200 transition-colors text-gray-600 hover:text-gray-800 flex items-center justify-center"
+                        title="Reset Quota Fields"
+                      >
+                        <RotateCcw className="w-5 h-5" />
+                      </button>
+                    )}
+                  </div>
+                  
                   <p className="text-base text-gray-500 mb-4">
                     NOTE: If you want to modify the current quota, input the new
                     quota and retype the quota to confirm that you really want
@@ -231,7 +360,8 @@ export default function QuotaManagementSuper() {
                   <select
                     value={quotaPeriod}
                     onChange={(e) => setQuotaPeriod(e.target.value)}
-                    className="w-full border rounded-md px-3 py-2 mb-4 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300"
+                    disabled={shouldDisableFields()}
+                    className="w-full border rounded-md px-3 py-2 mb-4 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300 disabled:bg-gray-100 disabled:cursor-not-allowed"
                   >
                     <option value="quarterly">Quarterly</option>
                     <option value="yearly">Yearly</option>
@@ -242,7 +372,8 @@ export default function QuotaManagementSuper() {
                     <select
                       value={selectedQuarter}
                       onChange={(e) => setSelectedQuarter(e.target.value)}
-                      className="w-full border rounded-md px-3 py-2 mb-4 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300"
+                      disabled={shouldDisableFields()}
+                      className="w-full border rounded-md px-3 py-2 mb-4 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300 disabled:bg-gray-100 disabled:cursor-not-allowed"
                     >
                       <option value="Q1">Q1 (Jan - Mar)</option>
                       <option value="Q2">Q2 (Apr - Jun)</option>
@@ -254,16 +385,18 @@ export default function QuotaManagementSuper() {
                   <input
                     type="number"
                     placeholder="Enter new quota"
-                    className={`w-full border rounded-md px-3 py-2 mb-2 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300 ${quotaMatchError ? "bg-red-100 border-red-500" : ""}`}
+                    className={`w-full border rounded-md px-3 py-2 mb-2 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300 disabled:bg-gray-100 disabled:cursor-not-allowed ${quotaMatchError ? "bg-red-100 border-red-500" : ""}`}
                     value={newQuota}
                     onChange={(e) => setNewQuota(e.target.value)}
+                    disabled={shouldDisableFields()}
                   />
                   <input
                     type="number"
                     placeholder="Confirm new quota"
-                    className={`w-full border rounded-md px-3 py-2 mb-2 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300 ${quotaMatchError ? "bg-red-100 border-red-500" : ""}`}
+                    className={`w-full border rounded-md px-3 py-2 mb-2 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300 disabled:bg-gray-100 disabled:cursor-not-allowed ${quotaMatchError ? "bg-red-100 border-red-500" : ""}`}
                     value={confirmQuota}
                     onChange={(e) => setConfirmQuota(e.target.value)}
+                    disabled={shouldDisableFields()}
                   />
 
                   {quotaMatchError && (
@@ -278,8 +411,8 @@ export default function QuotaManagementSuper() {
 
                   <button
                     onClick={handleSaveQuota}
-                    disabled={false} // Button is never disabled since spinner only shows after password confirmation
-                    className="px-5 py-2 rounded-lg text-white shadow-md hover:opacity-95 self-start mt-4"
+                    disabled={shouldDisableFields()}
+                    className="px-5 py-2 rounded-lg text-white shadow-md hover:opacity-95 self-start mt-4 disabled:opacity-50 disabled:cursor-not-allowed"
                     style={{ backgroundColor: primaryColor }}
                   >
                     Save Changes
@@ -295,11 +428,11 @@ export default function QuotaManagementSuper() {
       {isModalOpen && (
         <div
           className="fixed inset-0 bg-black/50 backdrop-blur-sm flex justify-center items-center z-50"
-          onClick={handleCancelModal} // Close on backdrop click
+          onClick={handleCancelModal}
         >
           <div
             className="bg-white rounded-xl shadow-2xl p-12 px-16 w-full max-w-lg"
-            onClick={(e) => e.stopPropagation()} // Prevent closing on modal click
+            onClick={(e) => e.stopPropagation()}
           >
             <div className="flex justify-center mb-6">
               <Shield className="h-12 w-12 text-blue-600" />
@@ -321,7 +454,7 @@ export default function QuotaManagementSuper() {
             )}
             <div className="flex justify-center gap-4">
               <button
-                onClick={handleCancelModal} // Cancel modal
+                onClick={handleCancelModal}
                 disabled={saving}
                 className="px-4 py-2 rounded-lg bg-gray-200 text-gray-800 hover:bg-gray-300 transition disabled:opacity-60"
               >
@@ -354,6 +487,78 @@ export default function QuotaManagementSuper() {
                   </svg>
                 )}
                 Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reset Password Modal */}
+      {isResetModalOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm flex justify-center items-center z-50"
+          onClick={handleCancelResetModal}
+        >
+          <div
+            className="bg-white rounded-xl shadow-2xl p-12 px-16 w-full max-w-lg"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex justify-center mb-6">
+              <RotateCcw className="h-12 w-12 text-orange-600" />
+            </div>
+            <h2 className="text-xl font-semibold text-gray-800 text-center mb-4">
+              Reset Quota Fields
+            </h2>
+            <p className="text-gray-600 text-center mb-4">
+              Enter your password to reset and unlock the quota fields
+            </p>
+            <input
+              type="password"
+              placeholder="Password"
+              value={resetPassword}
+              onChange={(e) => setResetPassword(e.target.value)}
+              className="w-full border rounded-md px-3 py-2 mb-4 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300"
+            />
+            {resetPasswordError && (
+              <p className="text-red-500 text-sm font-semibold text-center mb-4">
+                {resetPasswordError}
+              </p>
+            )}
+            <div className="flex justify-center gap-4">
+              <button
+                onClick={handleCancelResetModal}
+                disabled={resetting}
+                className="px-4 py-2 rounded-lg bg-gray-200 text-gray-800 hover:bg-gray-300 transition disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleResetPasswordSubmit}
+                disabled={resetting}
+                className="px-4 py-2 rounded-lg text-white disabled:opacity-60"
+                style={{ backgroundColor: primaryColor }}
+              >
+                {resetting && (
+                  <svg
+                    className="h-5 w-5 animate-spin inline-block mr-2"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    />
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8v4A4 4 0 004 12z"
+                    />
+                  </svg>
+                )}
+                Reset Fields
               </button>
             </div>
           </div>

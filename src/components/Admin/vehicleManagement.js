@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import DataTable from "react-data-table-component";
-import { FaEdit } from "react-icons/fa";
+import { FaEdit, FaPlus } from "react-icons/fa";
 import "jspdf-autotable";
 import { db } from "../../firebase";
 import { getAuth } from "firebase/auth";
@@ -23,6 +23,11 @@ export default function VehicleManagement() {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [units, setUnits] = useState([]);
   const [userRole, setUserRole] = useState("User"); // Add state for user role
+
+  // New states for add unit functionality
+  const [isAddingUnit, setIsAddingUnit] = useState(false);
+  const [newUnitText, setNewUnitText] = useState("");
+  const [savingUnit, setSavingUnit] = useState(false);
 
   const toggleDropdown = () => {
     setIsDropdownOpen((prev) => !prev);
@@ -81,6 +86,51 @@ export default function VehicleManagement() {
     }
   };
 
+  // Function to save new unit
+  const saveNewUnit = async () => {
+    if (!newUnitText.trim()) return;
+
+    setSavingUnit(true);
+    try {
+      const unitId = newUnitText.trim(); // Use the exact input as document ID
+      
+      await setDoc(doc(db, "unit", unitId), {
+        serialNo: "SE-00035", // Default serial number
+        status: "Available",
+        unitHolder: null,
+        vehicleID: "",
+        unit: unitId // Store the unit ID
+      });
+
+      await logSystemActivity(
+        `Added new unit: ${unitId}`,
+        userName
+      );
+
+      setToastMessage("New unit added successfully!");
+      setShowSuccessToast(true);
+      setTimeout(() => setShowSuccessToast(false), 3000);
+      
+      // Reset states
+      setIsAddingUnit(false);
+      setNewUnitText("");
+      
+      // Update form to use the new unit
+      setForm(prev => ({ ...prev, unit: unitId }));
+    } catch (error) {
+      console.error("Error saving unit:", error);
+      alert("Failed to save unit. Please try again.");
+    } finally {
+      setSavingUnit(false);
+    }
+  };
+
+  // Function to cancel adding unit
+  const cancelAddUnit = () => {
+    setIsAddingUnit(false);
+    setNewUnitText("");
+  };
+
   useEffect(() => {
     const unsubUnits = onSnapshot(
       collection(db, "unit"),
@@ -136,6 +186,7 @@ export default function VehicleManagement() {
     fuel: "",
     routeId: "",
     status: "Active",
+    serialNo: "",
   });
   const [errors, setErrors] = useState({});
 
@@ -177,6 +228,7 @@ export default function VehicleManagement() {
                 fuel: data.fuel || "",
                 routeId: data.routeId || "",
                 status: data.status || "Active",
+                serialNo: data.serialNo || "",
                 createdAt: toMillis(data.createdAt),
               });
             }
@@ -236,7 +288,7 @@ export default function VehicleManagement() {
       const route = routes.find((r) => r.id === vehicle.routeId);
       const routeName = route ? route.route : "";
       const searchText =
-        `${vehicle.vehicleID} ${vehicle.unit} ${vehicle.fuel} ${routeName} ${vehicle.status}`.toLowerCase();
+        `${vehicle.vehicleID} ${vehicle.unit} ${vehicle.fuel} ${routeName} ${vehicle.status} ${vehicle.serialNo}`.toLowerCase();
       const matchesSearch = !q || searchText.includes(q);
       const matchesRouteFilter = !routeFilter || routeName === routeFilter;
 
@@ -255,10 +307,11 @@ export default function VehicleManagement() {
     });
   }, [filtered, routes]);
 
-  const headers = ["Vehicle ID", "Unit", "Fuel", "Route", "Status"];
+  const headers = ["Vehicle ID", "Unit", "Serial No", "Fuel", "Route", "Status"];
   const rows = filteredWithRowNumber.map((item) => [
     item.id,
     item.unit,
+    item.serialNo,
     item.fuel,
     item.routeName,
     item.status,
@@ -335,6 +388,16 @@ export default function VehicleManagement() {
       cell: (r) => (
         <div className="truncate" title={r.unit}>
           {r.unit}
+        </div>
+      ),
+    },
+    {
+      name: "Serial No",
+      selector: (r) => r.serialNo,
+      sortable: true,
+      cell: (r) => (
+        <div className="truncate" title={r.serialNo}>
+          {r.serialNo || "-"}
         </div>
       ),
     },
@@ -442,6 +505,7 @@ export default function VehicleManagement() {
       fuel: "",
       routeId: "",
       status: "Active",
+      serialNo: "",
     });
     setErrors({});
   };
@@ -449,6 +513,8 @@ export default function VehicleManagement() {
   const closeAdd = () => {
     setIsAddOpen(false);
     setErrors({});
+    setIsAddingUnit(false);
+    setNewUnitText("");
   };
 
   const onForm = (e) => {
@@ -466,6 +532,8 @@ export default function VehicleManagement() {
     if (!form.vehicleID.trim())
       validationErrors.vehicleID = "Vehicle ID is required";
     if (!form.unit) validationErrors.unit = "Unit is required";
+    if (!form.serialNo.trim())
+      validationErrors.serialNo = "Serial Number is required";
 
     setErrors(validationErrors);
     if (Object.keys(validationErrors).length) return;
@@ -487,15 +555,17 @@ export default function VehicleManagement() {
         fuel: form.fuel.trim(),
         routeId: form.routeId,
         status: form.status,
+        serialNo: form.serialNo.trim(),
         createdAt: new Date().toISOString(),
       });
 
-      // Update the selected unit with vehicleID
+      // Update the selected unit with vehicleID and serialNo
       await setDoc(
         doc(db, "unit", form.unit),
         {
           vehicleID: form.vehicleID.trim(),
           status: "Available",
+          serialNo: form.serialNo.trim(),
         },
         { merge: true }
       );
@@ -535,6 +605,7 @@ export default function VehicleManagement() {
         fuel: edit.fuel,
         routeId: edit.routeId,
         status: edit.status,
+        serialNo: edit.serialNo,
       });
 
       // Remove vehicleID from previous unit if it changed
@@ -546,11 +617,14 @@ export default function VehicleManagement() {
         );
       }
 
-      // Assign vehicleID to new unit
+      // Assign vehicleID and serialNo to new unit
       if (newUnit) {
         await setDoc(
           doc(db, "unit", newUnit),
-          { vehicleID: viewing.id },
+          { 
+            vehicleID: viewing.id,
+            serialNo: edit.serialNo,
+          },
           { merge: true }
         );
       }
@@ -562,6 +636,8 @@ export default function VehicleManagement() {
         changes.push(`Fuel: ${viewing.fuel} → ${edit.fuel}`);
       if (viewing.status !== edit.status)
         changes.push(`Status: ${viewing.status} → ${edit.status}`);
+      if (viewing.serialNo !== edit.serialNo)
+        changes.push(`Serial No: ${viewing.serialNo} → ${edit.serialNo}`);
 
       const changesText = changes.length > 0 ? ` (${changes.join(", ")})` : "";
 
@@ -813,23 +889,106 @@ export default function VehicleManagement() {
 
               <div className="col-span-1">
                 <label className="block text-sm text-gray-600 mb-1">Unit</label>
-                <select
-                  name="unit"
-                  className={`w-full border rounded-md px-3 py-2 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300 ${
-                    errors.unit ? "border-red-500" : "border-gray-200"
-                  }`}
-                  value={form.unit}
-                  onChange={onForm}
-                >
-                  <option value="">Select Unit</option>
-                  {units.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.id}
-                    </option>
-                  ))}
-                </select>
+                <div className="flex items-center gap-2">
+                  {!isAddingUnit ? (
+                    <>
+                      <select
+                        name="unit"
+                        className={`flex-1 border rounded-md px-3 py-2 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300 ${
+                          errors.unit ? "border-red-500" : "border-gray-200"
+                        }`}
+                        value={form.unit}
+                        onChange={onForm}
+                      >
+                        <option value="">Select Unit</option>
+                        {units.map((u) => (
+                          <option key={u.id} value={u.id}>
+                            {u.id}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => setIsAddingUnit(true)}
+                        className="h-10 w-8 rounded-md flex items-center justify-center text-white shadow-md hover:shadow-lg transition-all duration-200 transform hover:scale-105"
+                        style={{ backgroundColor: primaryColor }}
+                        title="Add new unit"
+                      >
+                        <FaPlus size={12} />
+                      </button>
+                    </>
+                  ) : (
+                    <div className="flex items-center gap-2 w-full">
+                      <input
+                        type="text"
+                        placeholder="Enter unit ID (e.g., VAB1234)"
+                        className="flex-1 border rounded-md px-3 py-2 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300 border-gray-200"
+                        value={newUnitText}
+                        onChange={(e) => setNewUnitText(e.target.value)}
+                        autoFocus
+                      />
+                      <button
+                        type="button"
+                        onClick={saveNewUnit}
+                        disabled={savingUnit || !newUnitText.trim()}
+                        className="h-10 px-3 rounded-md bg-green-600 hover:bg-green-700 text-white disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                        title="Save unit"
+                      >
+                        {savingUnit ? (
+                          <svg
+                            className="h-4 w-4 animate-spin"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                          >
+                            <circle
+                              className="opacity-25"
+                              cx="12"
+                              cy="12"
+                              r="10"
+                              stroke="currentColor"
+                              strokeWidth="4"
+                            />
+                            <path
+                              className="opacity-75"
+                              fill="currentColor"
+                              d="M4 12a8 8 0 018-8v4A4 4 0 004 12z"
+                            />
+                          </svg>
+                        ) : (
+                          "Save"
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={cancelAddUnit}
+                        disabled={savingUnit}
+                        className="h-10 px-3 rounded-md bg-gray-300 hover:bg-gray-400 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="Cancel"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  )}
+                </div>
                 {errors.unit && (
                   <p className="text-red-500 text-xs mt-1">{errors.unit}</p>
+                )}
+              </div>
+
+              <div className="col-span-1">
+                <label className="block text-sm text-gray-600 mb-1">
+                  Serial Number
+                </label>
+                <input
+                  name="serialNo"
+                  className={`w-full border rounded-md px-3 py-2 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300 ${
+                    errors.serialNo ? "border-red-500" : "border-gray-200"
+                  }`}
+                  value={form.serialNo}
+                  onChange={onForm}
+                />
+                {errors.serialNo && (
+                  <p className="text-red-500 text-xs mt-1">{errors.serialNo}</p>
                 )}
               </div>
 
@@ -999,6 +1158,15 @@ export default function VehicleManagement() {
                       </option>
                     ))}
                 </select>
+              </div>
+
+              <div className="col-span-1">
+                <label className="block text-gray-600 mb-1">Serial Number</label>
+                <input
+                  className="w-full border rounded-md px-3 py-2 border-gray-200 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300"
+                  value={edit.serialNo}
+                  onChange={(e) => setEdit({ ...edit, serialNo: e.target.value })}
+                />
               </div>
 
               <div className="col-span-1">
