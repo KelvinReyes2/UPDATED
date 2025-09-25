@@ -15,7 +15,7 @@ import {
   onSnapshot,
 } from "firebase/firestore";
 import { auth, db } from "../firebase";
-import { KeyRound } from "lucide-react";
+import { KeyRound, Eye, EyeOff } from "lucide-react";
 
 // import images
 import MainLogo from "../images/MainLogo.png";
@@ -28,6 +28,7 @@ function Login() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   // forgot password states
   const [showReset, setShowReset] = useState(false);
@@ -292,6 +293,11 @@ function Login() {
     if (error) setError("");
   };
 
+  // Toggle password visibility
+  const togglePasswordVisibility = () => {
+    setShowPassword(!showPassword);
+  };
+
   // Render maintenance mode screen
   if (systemStatus === "Maintenance Mode") {
     return (
@@ -412,17 +418,31 @@ function Login() {
             <label className="block text-base font-semibold text-gray-700">
               Password
             </label>
-            <input
-              type="password"
-              className={`mt-1 w-full p-4 text-base border rounded-lg shadow-md focus:outline-none focus:ring-4 focus:ring-indigo-300 transition-all duration-300 ${
-                error ? "border-red-300 bg-red-50" : "border-gray-300"
-              }`}
-              placeholder="Enter password..."
-              value={password}
-              onChange={handlePasswordChange}
-              autoComplete="current-password"
-              required
-            />
+            <div className="relative mt-1">
+              <input
+                type={showPassword ? "text" : "password"}
+                className={`w-full p-4 pr-12 text-base border rounded-lg shadow-md focus:outline-none focus:ring-4 focus:ring-indigo-300 transition-all duration-300 ${
+                  error ? "border-red-300 bg-red-50" : "border-gray-300"
+                }`}
+                placeholder="Enter password..."
+                value={password}
+                onChange={handlePasswordChange}
+                autoComplete="current-password"
+                required
+              />
+              <button
+                type="button"
+                onClick={togglePasswordVisibility}
+                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700 focus:outline-none focus:text-indigo-600 transition-colors duration-200 p-1"
+                tabIndex={-1}
+              >
+                {showPassword ? (
+                  <EyeOff size={20} strokeWidth={2} />
+                ) : (
+                  <Eye size={20} strokeWidth={2} />
+                )}
+              </button>
+            </div>
             <div
               className="text-sm text-right mt-1 text-gray-500 hover:text-indigo-600 transition-all duration-200 cursor-pointer"
               onClick={() => setShowReset(true)}
