@@ -13,21 +13,47 @@ import {
   addDoc,
   serverTimestamp,
   getDoc,
+  query,
+  orderBy,
+  limit,
+  getDocs,
 } from "firebase/firestore";
 import { exportToCSV, exportToPDF } from "../functions/exportFunctions";
 
 export default function VehicleManagement() {
+  // Move all state declarations to the top
   const [showSuccessToast, setShowSuccessToast] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
-  const location = useLocation();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [units, setUnits] = useState([]);
-  const [userRole, setUserRole] = useState("User"); // Add state for user role
-
-  // New states for add unit functionality
+  const [userRole, setUserRole] = useState("User");
   const [isAddingUnit, setIsAddingUnit] = useState(false);
   const [newUnitText, setNewUnitText] = useState("");
   const [savingUnit, setSavingUnit] = useState(false);
+  const [vehicles, setVehicles] = useState([]);
+  const [routes, setRoutes] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [err] = useState(null);
+  const [search, setSearch] = useState("");
+  const [routeFilter, setRouteFilter] = useState("");
+  const [isAddOpen, setIsAddOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({
+    vehicleID: "",
+    unit: "",
+    fuel: "",
+    routeId: "",
+    status: "Active",
+    serialNo: "",
+  });
+  const [errors, setErrors] = useState({});
+  const [viewing, setViewing] = useState(null);
+  const [edit, setEdit] = useState(null);
+  const [savingEdit, setSavingEdit] = useState(false);
+
+  const location = useLocation();
+  const primaryColor = "#364C6E";
+  const isVehiclePage = location.pathname === "/vehicleManagement";
 
   const toggleDropdown = () => {
     setIsDropdownOpen((prev) => !prev);
@@ -37,6 +63,69 @@ export default function VehicleManagement() {
   const currentUser = auth.currentUser;
   const userName =
     currentUser?.displayName || currentUser?.email || "Unknown User";
+
+  const toMillis = (v) => {
+    if (!v) return 0;
+    if (typeof v === "string") {
+      const t = Date.parse(v);
+      return Number.isNaN(t) ? 0 : t;
+    }
+    if (v?.seconds)
+      return v.seconds * 1000 + Math.floor((v.nanoseconds || 0) / 1e6);
+    return 0;
+  };
+
+  // Function to generate next Vehicle ID
+  const generateNextVehicleID = async () => {
+    try {
+      const vehiclesQuery = query(
+        collection(db, "vehicle"),
+        orderBy("vehicleID", "desc"),
+        limit(1)
+      );
+      const snapshot = await getDocs(vehiclesQuery);
+      
+      if (snapshot.empty) {
+        return "Vehicle_0001";
+      }
+      
+      const lastVehicle = snapshot.docs[0].data();
+      const lastVehicleID = lastVehicle.vehicleID || "Vehicle_0000";
+      const lastNumber = parseInt(lastVehicleID.split('_')[1] || "0");
+      const nextNumber = lastNumber + 1;
+      
+      return `Vehicle_${String(nextNumber).padStart(4, '0')}`;
+    } catch (error) {
+      console.error("Error generating vehicle ID:", error);
+      return "Vehicle_0001";
+    }
+  };
+
+  // Function to generate next Serial Number
+  const generateNextSerialNumber = async () => {
+    try {
+      const unitsQuery = query(
+        collection(db, "unit"),
+        orderBy("serialNo", "desc"),
+        limit(1)
+      );
+      const snapshot = await getDocs(unitsQuery);
+      
+      if (snapshot.empty) {
+        return "SE_1001";
+      }
+      
+      const lastUnit = snapshot.docs[0].data();
+      const lastSerialNo = lastUnit.serialNo || "SE_1000";
+      const lastNumber = parseInt(lastSerialNo.split('_')[1] || "1000");
+      const nextNumber = lastNumber + 1;
+      
+      return `SE_${nextNumber}`;
+    } catch (error) {
+      console.error("Error generating serial number:", error);
+      return "SE_1001";
+    }
+  };
 
   // Function to fetch user role
   const fetchUserRole = useCallback(async () => {
@@ -51,18 +140,21 @@ export default function VehicleManagement() {
 
       if (userDocSnap.exists()) {
         const userData = userDocSnap.data();
-        setUserRole(userData.role || "User"); // Default to "User" if role not found
+        setUserRole(userData.role || "User");
       } else {
-        setUserRole("User"); // Default role if user document doesn't exist
+        setUserRole("User");
       }
     } catch (error) {
       console.error("Error fetching user role:", error);
-      setUserRole("User"); // Fallback to default role
+      setUserRole("User");
     }
   }, [currentUser?.uid]);
 
   // Function to map user roles to display roles for logging
-  // Function to map user roles to display roles for logging
+  const ROLE_MAPPING = {
+    Admin: "System Admin",
+  };
+
   const mapRoleForLogging = (role) => {
     return ROLE_MAPPING[role] || null;
   };
@@ -70,7 +162,6 @@ export default function VehicleManagement() {
   // Function to log system activities with mapped role
   const logSystemActivity = async (activity, performedBy, role = null) => {
     try {
-      // Use provided role or fall back to userRole from state
       const actualRole = role || userRole;
       const displayRole = mapRoleForLogging(actualRole);
 
@@ -92,14 +183,15 @@ export default function VehicleManagement() {
 
     setSavingUnit(true);
     try {
-      const unitId = newUnitText.trim(); // Use the exact input as document ID
+      const unitId = newUnitText.trim();
+      const nextSerialNo = await generateNextSerialNumber();
       
+      // Remove the 'unit' field, just use document ID and other fields
       await setDoc(doc(db, "unit", unitId), {
-        serialNo: "SE-00035", // Default serial number
+        serialNo: nextSerialNo,
         status: "Available",
         unitHolder: null,
         vehicleID: "",
-        unit: unitId // Store the unit ID
       });
 
       await logSystemActivity(
@@ -111,11 +203,9 @@ export default function VehicleManagement() {
       setShowSuccessToast(true);
       setTimeout(() => setShowSuccessToast(false), 3000);
       
-      // Reset states
       setIsAddingUnit(false);
       setNewUnitText("");
       
-      // Update form to use the new unit
       setForm(prev => ({ ...prev, unit: unitId }));
     } catch (error) {
       console.error("Error saving unit:", error);
@@ -131,6 +221,7 @@ export default function VehicleManagement() {
     setNewUnitText("");
   };
 
+  // Load units from unit collection
   useEffect(() => {
     const unsubUnits = onSnapshot(
       collection(db, "unit"),
@@ -140,19 +231,16 @@ export default function VehicleManagement() {
           const data = d.data();
           if (data) {
             temp.push({
-              id: d.id,
+              id: d.id, // This is the unit ID (like VAB12345)
               vehicleID: data.vehicleID || "",
               status: data.status || "Available",
-              serialNo: data.serialNo || "", // keep serialNo for dropdown
+              serialNo: data.serialNo || "",
+              // Removed the 'unit' field since we use document ID
             });
           }
         });
 
-        if (edit) {
-          setUnits(temp.filter((u) => !u.vehicleID || u.id === edit.unit));
-        } else {
-          setUnits(temp.filter((u) => !u.vehicleID));
-        }
+        setUnits(temp);
       },
       (error) => {
         console.error("Error loading units:", error);
@@ -161,49 +249,6 @@ export default function VehicleManagement() {
 
     return () => unsubUnits();
   }, []);
-
-  // Add this near the top of your component, after imports
-  const ROLE_MAPPING = {
-    Admin: "System Admin",
-  };
-
-  const primaryColor = "#364C6E";
-  const isVehiclePage = location.pathname === "/vehicleManagement";
-
-  const [vehicles, setVehicles] = useState([]);
-  const [routes, setRoutes] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [err] = useState(null);
-
-  const [search, setSearch] = useState("");
-  const [routeFilter, setRouteFilter] = useState("");
-
-  const [isAddOpen, setIsAddOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({
-    vehicleID: "",
-    unit: "",
-    fuel: "",
-    routeId: "",
-    status: "Active",
-    serialNo: "",
-  });
-  const [errors, setErrors] = useState({});
-
-  const [viewing, setViewing] = useState(null);
-  const [edit, setEdit] = useState(null);
-  const [savingEdit, setSavingEdit] = useState(false);
-
-  const toMillis = (v) => {
-    if (!v) return 0;
-    if (typeof v === "string") {
-      const t = Date.parse(v);
-      return Number.isNaN(t) ? 0 : t;
-    }
-    if (v?.seconds)
-      return v.seconds * 1000 + Math.floor((v.nanoseconds || 0) / 1e6);
-    return 0;
-  };
 
   // Fetch user role on component mount
   useEffect(() => {
@@ -224,11 +269,9 @@ export default function VehicleManagement() {
               temp.push({
                 id: d.id,
                 vehicleID: data.vehicleID || "",
-                unit: data.unit || "",
                 fuel: data.fuel || "",
                 routeId: data.routeId || "",
                 status: data.status || "Active",
-                serialNo: data.serialNo || "",
                 createdAt: toMillis(data.createdAt),
               });
             }
@@ -255,14 +298,12 @@ export default function VehicleManagement() {
           snap.forEach((d) => {
             const data = d.data();
             if (data && data.Route) {
-              // Note: "Route" with capital R
               temp.push({
                 id: d.id,
-                route: data.Route, // Using "route" field name and "Route" field from database
+                route: data.Route,
               });
             }
           });
-          // Remove duplicate routes
           const uniqueRoutes = Array.from(
             new Set(temp.map((route) => route.route))
           ).map((routeName) => temp.find((route) => route.route === routeName));
@@ -285,32 +326,39 @@ export default function VehicleManagement() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return vehicles.filter((vehicle) => {
+      const unit = units.find((u) => u.vehicleID === vehicle.vehicleID);
+      const unitName = unit ? unit.id : ""; // Use document ID as unit name
+      const serialNo = unit ? unit.serialNo : "";
+      
       const route = routes.find((r) => r.id === vehicle.routeId);
       const routeName = route ? route.route : "";
       const searchText =
-        `${vehicle.vehicleID} ${vehicle.unit} ${vehicle.fuel} ${routeName} ${vehicle.status} ${vehicle.serialNo}`.toLowerCase();
+        `${vehicle.vehicleID} ${unitName} ${vehicle.fuel} ${routeName} ${vehicle.status} ${serialNo}`.toLowerCase();
       const matchesSearch = !q || searchText.includes(q);
       const matchesRouteFilter = !routeFilter || routeName === routeFilter;
 
       return matchesSearch && matchesRouteFilter;
     });
-  }, [vehicles, routes, search, routeFilter]);
+  }, [vehicles, routes, units, search, routeFilter]);
 
   const filteredWithRowNumber = useMemo(() => {
     return filtered.map((r, i) => {
       const route = routes.find((route) => route.id === r.routeId);
+      const unit = units.find((u) => u.vehicleID === r.vehicleID);
       return {
         ...r,
         _row: i + 1,
         routeName: route ? route.route : "No Route",
+        unitName: unit ? unit.id : "No Unit", // Use document ID as unit name
+        serialNo: unit ? unit.serialNo : "No Serial",
       };
     });
-  }, [filtered, routes]);
+  }, [filtered, routes, units]);
 
   const headers = ["Vehicle ID", "Unit", "Serial No", "Fuel", "Route", "Status"];
   const rows = filteredWithRowNumber.map((item) => [
-    item.id,
-    item.unit,
+    item.vehicleID,
+    item.unitName,
     item.serialNo,
     item.fuel,
     item.routeName,
@@ -328,9 +376,7 @@ export default function VehicleManagement() {
         userName
       );
 
-      // Log the export activity (role will be mapped in logSystemActivity)
-      await logSystemActivity("Printed Vehicle Report", userName);
-
+      await logSystemActivity("Exported Vehicle Report to CSV", userName);
       setIsDropdownOpen(false);
     } catch (error) {
       console.error("Error exporting to CSV:", error);
@@ -347,9 +393,7 @@ export default function VehicleManagement() {
         userName
       );
 
-      // Log the export activity (role will be mapped in logSystemActivity)
-      await logSystemActivity("Printed Vehicle Report", userName);
-
+      await logSystemActivity("Exported Vehicle Report to PDF", userName);
       setIsDropdownOpen(false);
     } catch (error) {
       console.error("Error exporting to PDF:", error);
@@ -373,21 +417,21 @@ export default function VehicleManagement() {
   const columns = [
     {
       name: "Vehicle ID",
-      selector: (r) => r.id,
+      selector: (r) => r.vehicleID,
       sortable: true,
       cell: (r) => (
-        <div className="truncate" title={r.id}>
-          {r.id}
+        <div className="truncate" title={r.vehicleID}>
+          {r.vehicleID}
         </div>
       ),
     },
     {
       name: "Unit",
-      selector: (r) => r.unit,
+      selector: (r) => r.unitName,
       sortable: true,
       cell: (r) => (
-        <div className="truncate" title={r.unit}>
-          {r.unit}
+        <div className="truncate" title={r.unitName}>
+          {r.unitName}
         </div>
       ),
     },
@@ -443,7 +487,12 @@ export default function VehicleManagement() {
         <button
           onClick={() => {
             setViewing(row);
-            setEdit({ ...row });
+            const unit = units.find((u) => u.vehicleID === row.vehicleID);
+            setEdit({ 
+              ...row, 
+              unit: unit ? unit.id : "",
+              serialNo: unit ? unit.serialNo : ""
+            });
           }}
           title="Edit"
           className="inline-flex items-center justify-center h-9 px-3 rounded-full border border-gray-200 bg-white text-gray-700 hover:shadow-md transition text-sm font-semibold"
@@ -497,12 +546,13 @@ export default function VehicleManagement() {
     },
   };
 
-  const openAdd = () => {
+  const openAdd = async () => {
     setIsAddOpen(true);
+    const nextVehicleID = await generateNextVehicleID();
     setForm({
-      vehicleID: "",
+      vehicleID: nextVehicleID,
       unit: "",
-      fuel: "",
+      fuel: "Diesel", // Auto-fill with Diesel
       routeId: "",
       status: "Active",
       serialNo: "",
@@ -532,8 +582,6 @@ export default function VehicleManagement() {
     if (!form.vehicleID.trim())
       validationErrors.vehicleID = "Vehicle ID is required";
     if (!form.unit) validationErrors.unit = "Unit is required";
-    if (!form.serialNo.trim())
-      validationErrors.serialNo = "Serial Number is required";
 
     setErrors(validationErrors);
     if (Object.keys(validationErrors).length) return;
@@ -549,23 +597,21 @@ export default function VehicleManagement() {
         return;
       }
 
-      // Save vehicle
+      // Save vehicle (without unit info - only vehicleID, fuel, routeId, status)
       await setDoc(vehicleRef, {
-        unit: form.unit,
+        vehicleID: form.vehicleID.trim(),
         fuel: form.fuel.trim(),
         routeId: form.routeId,
         status: form.status,
-        serialNo: form.serialNo.trim(),
-        createdAt: new Date().toISOString(),
+        createdAt: serverTimestamp(),
       });
 
-      // Update the selected unit with vehicleID and serialNo
+      // Update the selected unit with vehicleID (using vehicleID, not document ID)
       await setDoc(
         doc(db, "unit", form.unit),
         {
-          vehicleID: form.vehicleID.trim(),
-          status: "Available",
-          serialNo: form.serialNo.trim(),
+          vehicleID: form.vehicleID.trim(), // Store vehicleID, not document ID
+          status: "Available", // Keep status as Available as requested
         },
         { merge: true }
       );
@@ -596,54 +642,53 @@ export default function VehicleManagement() {
 
     setSavingEdit(true);
     try {
-      const prevUnit = viewing.unit;
+      const prevUnit = units.find((u) => u.vehicleID === viewing.vehicleID);
       const newUnit = edit.unit;
 
-      // Update vehicle document
+      // Update vehicle document (no unit info stored here)
       await setDoc(doc(db, "vehicle", viewing.id), {
-        unit: newUnit,
+        vehicleID: viewing.vehicleID,
         fuel: edit.fuel,
         routeId: edit.routeId,
         status: edit.status,
-        serialNo: edit.serialNo,
       });
 
       // Remove vehicleID from previous unit if it changed
-      if (prevUnit && prevUnit !== newUnit) {
+      if (prevUnit && prevUnit.id !== newUnit) {
         await setDoc(
-          doc(db, "unit", prevUnit),
-          { vehicleID: "" },
+          doc(db, "unit", prevUnit.id),
+          { 
+            vehicleID: "",
+            status: "Available"
+          },
           { merge: true }
         );
       }
 
-      // Assign vehicleID and serialNo to new unit
+      // Assign vehicleID to new unit
       if (newUnit) {
         await setDoc(
           doc(db, "unit", newUnit),
           { 
-            vehicleID: viewing.id,
-            serialNo: edit.serialNo,
+            vehicleID: viewing.vehicleID, // Store vehicleID, not document ID
+            status: "Available" // Keep status as Available as requested
           },
           { merge: true }
         );
       }
 
       const changes = [];
-
-      if (prevUnit !== newUnit) changes.push(`Unit: ${prevUnit} → ${newUnit}`);
+      const prevUnitName = prevUnit ? prevUnit.id : "";
+      if (prevUnitName !== newUnit) changes.push(`Unit: ${prevUnitName} → ${newUnit}`);
       if (viewing.fuel !== edit.fuel)
         changes.push(`Fuel: ${viewing.fuel} → ${edit.fuel}`);
       if (viewing.status !== edit.status)
         changes.push(`Status: ${viewing.status} → ${edit.status}`);
-      if (viewing.serialNo !== edit.serialNo)
-        changes.push(`Serial No: ${viewing.serialNo} → ${edit.serialNo}`);
 
       const changesText = changes.length > 0 ? ` (${changes.join(", ")})` : "";
 
-      // Log system activity with role mapping
       await logSystemActivity(
-        `Updated vehicle: ${viewing.id}${changesText}`,
+        `Updated vehicle: ${viewing.vehicleID}${changesText}`,
         userName
       );
 
@@ -662,9 +707,6 @@ export default function VehicleManagement() {
 
   return (
     <div className="flex bg-gray-100 min-h-screen">
-      {/* Sidebar */}
-
-      {/* Main Content */}
       <main className="flex-1 p-8 mx-auto">
         {!isVehiclePage ? (
           <Outlet />
@@ -715,7 +757,6 @@ export default function VehicleManagement() {
                   </div>
 
                   <div className="relative">
-                    {/* Export Button */}
                     <button
                       onClick={toggleDropdown}
                       className="flex items-center gap-2 px-9 py-2 rounded-lg text-white shadow-md hover:shadow-lg transition"
@@ -724,7 +765,6 @@ export default function VehicleManagement() {
                       <span className="font-semibold">Export</span>
                     </button>
 
-                    {/* Dropdown Menu */}
                     {isDropdownOpen && (
                       <div className="absolute right-0 w-40 mt-2 bg-white shadow-lg rounded-lg z-10">
                         <ul className="text-sm">
@@ -874,11 +914,12 @@ export default function VehicleManagement() {
                 </label>
                 <input
                   name="vehicleID"
-                  className={`w-full border rounded-md px-3 py-2 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300 ${
+                  className={`w-full border rounded-md px-3 py-2 bg-gray-50 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300 ${
                     errors.vehicleID ? "border-red-500" : "border-gray-200"
                   }`}
                   value={form.vehicleID}
-                  onChange={onForm}
+                  readOnly
+                  title="Auto-generated Vehicle ID"
                 />
                 {errors.vehicleID && (
                   <p className="text-red-500 text-xs mt-1">
@@ -901,7 +942,7 @@ export default function VehicleManagement() {
                         onChange={onForm}
                       >
                         <option value="">Select Unit</option>
-                        {units.map((u) => (
+                        {units.filter(u => u.status === "Available").map((u) => (
                           <option key={u.id} value={u.id}>
                             {u.id}
                           </option>
@@ -910,18 +951,21 @@ export default function VehicleManagement() {
                       <button
                         type="button"
                         onClick={() => setIsAddingUnit(true)}
-                        className="h-10 w-8 rounded-md flex items-center justify-center text-white shadow-md hover:shadow-lg transition-all duration-200 transform hover:scale-105"
-                        style={{ backgroundColor: primaryColor }}
+                        className="h-10 w-10 rounded-lg flex items-center justify-center text-white shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-110 active:scale-95"
+                        style={{ 
+                          backgroundColor: primaryColor,
+                          background: `linear-gradient(135deg, ${primaryColor} 0%, #2a3f5f 100%)`
+                        }}
                         title="Add new unit"
                       >
-                        <FaPlus size={12} />
+                        <FaPlus size={14} className="drop-shadow-sm" />
                       </button>
                     </>
                   ) : (
                     <div className="flex items-center gap-2 w-full">
                       <input
                         type="text"
-                        placeholder="Enter unit ID (e.g., VAB1234)"
+                        placeholder="Enter unit ID"
                         className="flex-1 border rounded-md px-3 py-2 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300 border-gray-200"
                         value={newUnitText}
                         onChange={(e) => setNewUnitText(e.target.value)}
@@ -931,29 +975,32 @@ export default function VehicleManagement() {
                         type="button"
                         onClick={saveNewUnit}
                         disabled={savingUnit || !newUnitText.trim()}
-                        className="h-10 px-3 rounded-md bg-green-600 hover:bg-green-700 text-white disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                        className="h-10 px-4 rounded-lg bg-green-600 hover:bg-green-700 text-white disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center font-medium shadow-md hover:shadow-lg transition-all duration-200"
                         title="Save unit"
                       >
                         {savingUnit ? (
-                          <svg
-                            className="h-4 w-4 animate-spin"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                          >
-                            <circle
-                              className="opacity-25"
-                              cx="12"
-                              cy="12"
-                              r="10"
-                              stroke="currentColor"
-                              strokeWidth="4"
-                            />
-                            <path
-                              className="opacity-75"
-                              fill="currentColor"
-                              d="M4 12a8 8 0 018-8v4A4 4 0 004 12z"
-                            />
-                          </svg>
+                          <div className="flex items-center gap-2">
+                            <svg
+                              className="h-4 w-4 animate-spin"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                            >
+                              <circle
+                                className="opacity-25"
+                                cx="12"
+                                cy="12"
+                                r="10"
+                                stroke="currentColor"
+                                strokeWidth="4"
+                              />
+                              <path
+                                className="opacity-75"
+                                fill="currentColor"
+                                d="M4 12a8 8 0 018-8v4A4 4 0 004 12z"
+                              />
+                            </svg>
+                            <span>Saving...</span>
+                          </div>
                         ) : (
                           "Save"
                         )}
@@ -962,7 +1009,7 @@ export default function VehicleManagement() {
                         type="button"
                         onClick={cancelAddUnit}
                         disabled={savingUnit}
-                        className="h-10 px-3 rounded-md bg-gray-300 hover:bg-gray-400 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="h-10 px-4 rounded-lg bg-gray-500 hover:bg-gray-600 text-white disabled:opacity-50 disabled:cursor-not-allowed font-medium shadow-md hover:shadow-lg transition-all duration-200"
                         title="Cancel"
                       >
                         Cancel
@@ -981,15 +1028,11 @@ export default function VehicleManagement() {
                 </label>
                 <input
                   name="serialNo"
-                  className={`w-full border rounded-md px-3 py-2 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300 ${
-                    errors.serialNo ? "border-red-500" : "border-gray-200"
-                  }`}
-                  value={form.serialNo}
-                  onChange={onForm}
+                  className="w-full border rounded-md px-3 py-2 bg-gray-50 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300 border-gray-200"
+                  value={form.unit ? (units.find(u => u.id === form.unit)?.serialNo || "Will be auto-assigned") : "Select a unit first"}
+                  readOnly
+                  title="Serial number from selected unit"
                 />
-                {errors.serialNo && (
-                  <p className="text-red-500 text-xs mt-1">{errors.serialNo}</p>
-                )}
               </div>
 
               <div className="col-span-1">
@@ -1127,7 +1170,7 @@ export default function VehicleManagement() {
                   <h3 className="text-base font-semibold text-gray-800">
                     Edit Vehicle
                   </h3>
-                  <p className="text-xs text-gray-500">{viewing.id}</p>
+                  <p className="text-xs text-gray-500">{viewing.vehicleID}</p>
                 </div>
               </div>
               <StatusBadge value={edit.status} />
@@ -1137,8 +1180,8 @@ export default function VehicleManagement() {
               <div className="col-span-1">
                 <label className="block text-gray-600 mb-1">Vehicle ID</label>
                 <input
-                  className="w-full border rounded-md px-3 py-2 border-gray-200 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300"
-                  value={edit.id} // Use document ID
+                  className="w-full border rounded-md px-3 py-2 bg-gray-50 border-gray-200 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300"
+                  value={viewing.vehicleID}
                   readOnly
                 />
               </div>
@@ -1146,12 +1189,19 @@ export default function VehicleManagement() {
                 <label className="block text-gray-600 mb-1">Unit</label>
                 <select
                   value={edit.unit}
-                  onChange={(e) => setEdit({ ...edit, unit: e.target.value })}
+                  onChange={(e) => {
+                    const selectedUnit = units.find(u => u.id === e.target.value);
+                    setEdit({ 
+                      ...edit, 
+                      unit: e.target.value,
+                      serialNo: selectedUnit ? selectedUnit.serialNo : ""
+                    });
+                  }}
                   className="w-full border rounded-md px-3 py-2 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300"
                 >
                   <option value="">Select Unit</option>
                   {units
-                    .filter((u) => !u.vehicleID || u.id === viewing.unit)
+                    .filter((u) => u.status === "Available" || u.vehicleID === viewing.vehicleID)
                     .map((u) => (
                       <option key={u.id} value={u.id}>
                         {u.id}
@@ -1163,9 +1213,10 @@ export default function VehicleManagement() {
               <div className="col-span-1">
                 <label className="block text-gray-600 mb-1">Serial Number</label>
                 <input
-                  className="w-full border rounded-md px-3 py-2 border-gray-200 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300"
-                  value={edit.serialNo}
-                  onChange={(e) => setEdit({ ...edit, serialNo: e.target.value })}
+                  className="w-full border rounded-md px-3 py-2 bg-gray-50 border-gray-200 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300"
+                  value={edit.serialNo || "No serial number"}
+                  readOnly
+                  title="Serial number from selected unit"
                 />
               </div>
 
@@ -1255,4 +1306,4 @@ export default function VehicleManagement() {
       )}
     </div>
   );
-}
+} 

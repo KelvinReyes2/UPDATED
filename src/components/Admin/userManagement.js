@@ -258,7 +258,7 @@ export default function UserManagement() {
       );
 
       // Log the export activity
-      await logSystemActivity("Printed User Report", userName);
+      await logSystemActivity("Exported User Report to CSV", userName);
 
       setIsDropdownOpen(false);
     } catch (error) {
@@ -277,7 +277,7 @@ export default function UserManagement() {
       );
 
       // Log the export activity
-      await logSystemActivity("Printed User Report", userName);
+      await logSystemActivity("Exported User Report to PDF", userName);
 
       setIsDropdownOpen(false);
     } catch (error) {

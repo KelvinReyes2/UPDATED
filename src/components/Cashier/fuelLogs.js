@@ -3,7 +3,6 @@ import { Fuel, Lock, AlertTriangle } from "lucide-react";
 import {
   collection,
   getDocs,
-  getDoc,
   addDoc,
   serverTimestamp,
   updateDoc,
@@ -29,6 +28,7 @@ const FuelLogsPage = () => {
   const [search, setSearch] = useState("");
   const [logs, setLogs] = useState([]);
   const [driversList, setDriversList] = useState([]);
+  const [unitData, setUnitData] = useState([]); // Add unitData state
   const [isAddExpenseOpen, setIsAddExpenseOpen] = useState(false);
   const [isPriceModalOpen, setIsPriceModalOpen] = useState(false);
   const [newPriceInput, setNewPriceInput] = useState("");
@@ -43,48 +43,27 @@ const FuelLogsPage = () => {
   const [toastMessage, setToastMessage] = useState("");
   const [showErrorToast, setShowErrorToast] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
-  const [userRole, setUserRole] = useState("");
   const [showWarningModal, setShowWarningModal] = useState(false);
-  const [selectedDriverUnit, setSelectedDriverUnit] = useState("N/A");
+  const [selectedVehicle, setSelectedVehicle] = useState("N/A");
   const [dateFilter, setDateFilter] = useState(
     new Date().toISOString().split("T")[0]
   );
 
   const primaryColor = "#364C6E";
 
-  useEffect(() => {
-  const fetchUserRole = async () => {
-    if (currentUser?.uid) {
-      try {
-        const userRef = doc(db, "users", currentUser.uid);
-        const userSnap = await getDoc(userRef);
-        if (userSnap.exists()) {
-          setUserRole(userSnap.data().role || "User");
-        }
-      } catch (error) {
-        console.error("Error fetching user role:", error);
-        setUserRole("User");
-      }
-    }
-  };
-
-  fetchUserRole();
-}, [currentUser]);
-
   // Function to log system activities
   const logSystemActivity = async (activity, performedBy) => {
-  try {
-    await addDoc(collection(db, "systemLogs"), {
-      activity,
-      performedBy,
-      role: userRole, // Use the actual user role from database
-      timestamp: serverTimestamp(),
-    });
-    console.log("Fuel activity logged successfully");
-  } catch (error) {
-    console.error("Error logging fuel activity:", error);
-  }
-};
+    try {
+      await addDoc(collection(db, "systemLogs"), {
+        activity,
+        performedBy,
+        timestamp: serverTimestamp(),
+      });
+      console.log("Fuel activity logged successfully");
+    } catch (error) {
+      console.error("Error logging fuel activity:", error);
+    }
+  };
 
   // Show success toast
   const showToast = (message) => {
@@ -100,55 +79,78 @@ const FuelLogsPage = () => {
     setTimeout(() => setShowErrorToast(false), 3000);
   };
 
+  // Fetch Unit Data
+  useEffect(() => {
+    const unsubUnitData = onSnapshot(collection(db, "unit"), (snap) => {
+      const temp = snap.docs.map((d) => ({
+        id: d.id, // This is the unit document ID (like VAB12345)
+        unitHolder: d.data()?.unitHolder || null,
+        vehicleID: d.data()?.vehicleID || "", // This matches vehicle.vehicleID field
+        serialNo: d.data()?.serialNo || "",
+        status: d.data()?.status || "Available",
+      }));
+      setUnitData(temp);
+    });
+
+    return () => unsubUnitData();
+  }, []);
+
   // Fetch Fuel Logs
   useEffect(() => {
-  const fetchLogs = async () => {
-    try {
-      const logsRef = collection(db, "fuelLogs");
-      const q = query(logsRef, orderBy("timestamp", "desc"));
-      const unsub = onSnapshot(
-        q,
-        async (snapshot) => {
-          const logsData = [];
-          
-          for (const logDoc of snapshot.docs) {
-            const log = logDoc.data();
-            
-            // Fetch unit ID for this driver
-            const unitId = await fetchUnitForDriver(log.Driver || "");
-            
-            logsData.push({
-              id: logDoc.id,
-              date: log.timestamp?.toDate
-                ? log.timestamp.toDate().toLocaleDateString()
-                : "N/A",
-              driver: log.Driver || "N/A",
-              officer: log.Officer || "N/A",
-              amount: parseFloat(log.fuelAmount) || 0,
-              vehicle: unitId, // This will now show the actual unit ID
-              timestamp: log.timestamp,
+    const fetchLogs = async () => {
+      try {
+        const logsRef = collection(db, "fuelLogs");
+        const q = query(logsRef, orderBy("timestamp", "desc"));
+        const unsub = onSnapshot(
+          q,
+          (snapshot) => {
+            const data = snapshot.docs.map((doc) => {
+              const log = doc.data();
+              return {
+                id: doc.id,
+                date: log.timestamp?.toDate
+                  ? log.timestamp.toDate().toLocaleDateString()
+                  : "N/A",
+                driver: log.Driver || "N/A",
+                officer: log.Officer || "N/A",
+                driverId: log.driverId || "N/A",
+                amount: parseFloat(log.fuelAmount) || 0,
+                vehicle: log.Vehicle || "N/A", // This will now contain the unit document ID
+                timestamp: log.timestamp,
+              };
             });
+            setLogs(data);
+            setLoading(false);
+          },
+          (error) => {
+            setErr(error.message || "Failed to load fuel logs");
+            setLoading(false);
           }
-          
-          setLogs(logsData);
-          setLoading(false);
-        },
-        (error) => {
-          setErr(error.message || "Failed to load fuel logs");
-          setLoading(false);
-        }
-      );
+        );
 
-      return () => unsub();
-    } catch (err) {
-      console.error("Error fetching logs:", err);
-      setErr(err.message);
-      setLoading(false);
+        return () => unsub();
+      } catch (err) {
+        console.error("Error fetching logs:", err);
+        setErr(err.message);
+        setLoading(false);
+      }
+    };
+
+    fetchLogs();
+  }, []);
+
+  // Updated function to fetch unit for driver
+  const fetchUnitForDriver = async (driverId) => {
+    // Find the unit where the driver is the unitHolder and status is "Dispatched"
+    const dispatchedUnit = unitData.find(
+      (unit) => unit.unitHolder === driverId && unit.status === "Dispatched"
+    );
+    
+    if (dispatchedUnit) {
+      return dispatchedUnit.id; // Return the unit document ID (e.g., VAB12345)
     }
+    return null;
   };
-
-  fetchLogs();
-}, []);
 
   // Fetch Drivers List
   useEffect(() => {
@@ -158,22 +160,38 @@ const FuelLogsPage = () => {
         const q = query(usersRef, where("role", "in", ["Driver", "Reliever"]));
         const snapshot = await getDocs(q);
 
-        const today = new Date().toDateString();
+        const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
+        const drivers = [];
 
-        const drivers = snapshot.docs
-          .map((doc) => ({ uid: doc.id, ...doc.data() }))
-          .filter((d) => {
-            const fullName = `${d.firstName} ${d.lastName}`;
-            return !logs.some(
-              (l) =>
-                l.driver === fullName &&
-                new Date(l.date).toDateString() === today
+        for (const docSnap of snapshot.docs) {
+          const d = { uid: docSnap.id, ...docSnap.data() };
+
+          // ✅ Check if driver has a dispatched unit
+          const unit = await fetchUnitForDriver(d.uid);
+          if (!unit) continue; // skip if no unit dispatched to this driver
+
+          const fullName = `${d.firstName} ${d.lastName}`;
+
+          // ✅ Skip drivers who already have a fuel log today
+          const hasLogToday = logs.some((l) => {
+            const logDate = l.timestamp?.toDate
+              ? l.timestamp.toDate().toISOString().split("T")[0]
+              : null;
+            return (
+              l.Driver?.trim().toLowerCase() ===
+                fullName.trim().toLowerCase() && logDate === today
             );
-          })
-          .map((d) => ({
+          });
+          if (hasLogToday) continue;
+
+          drivers.push({
             uid: d.uid,
-            fullName: `${d.firstName} ${d.lastName}`,
-          }));
+            fullName,
+          });
+        }
+
+        // Sort alphabetically
+        drivers.sort((a, b) => a.fullName.localeCompare(b.fullName));
 
         setDriversList(drivers);
       } catch (err) {
@@ -181,48 +199,12 @@ const FuelLogsPage = () => {
       }
     };
 
-    fetchDrivers();
-  }, [logs]);
+    // Only fetch drivers after unitData is loaded
+    if (unitData.length > 0) {
+      fetchDrivers();
+    }
+  }, [logs, unitData]);
 
-  const fetchUnitForDriver = async (driverName) => {
-  try {
-    // Find user by full name
-    const usersRef = collection(db, "users");
-    const userQuery = query(usersRef, where("role", "in", ["Driver", "Reliever"]));
-    const userSnapshot = await getDocs(userQuery);
-    
-    const matchingUser = userSnapshot.docs.find(userDoc => {
-      const userData = userDoc.data();
-      const fullName = `${userData.firstName} ${userData.lastName}`;
-      return fullName === driverName;
-    });
-    
-    if (!matchingUser) {
-      console.log("No matching user found for:", driverName);
-      return "N/A";
-    }
-    
-    const userId = matchingUser.id;
-    console.log("Found user ID:", userId);
-    
-    // Find unit where unitHolder equals this user's ID
-    const unitRef = collection(db, "unit"); // Fixed: "unit" not "units"
-    const unitQuery = query(unitRef, where("unitHolder", "==", userId));
-    const unitSnapshot = await getDocs(unitQuery);
-    
-    if (!unitSnapshot.empty) {
-      const unitDoc = unitSnapshot.docs[0];
-      console.log("Found unit:", unitDoc.id);
-      return unitDoc.id; // This returns "AC1A2B", "AC3C4D", etc.
-    }
-    
-    console.log("No unit found for user:", userId);
-    return "N/A";
-  } catch (error) {
-    console.error("Error fetching unit for driver:", driverName, error);
-    return "N/A";
-  }
-};
   // Fetch Latest Fuel Price
   useEffect(() => {
     const fetchFuelPrice = async () => {
@@ -334,73 +316,81 @@ const FuelLogsPage = () => {
   );
 
   const onFormChange = async (e) => {
-  const { name, value } = e.target;
-  setForm({ ...form, [name]: value });
-  
-  // If driver is changed, fetch their unit
-  if (name === "driver" && value) {
-    const unitId = await fetchUnitForDriver(value);
-    setSelectedDriverUnit(unitId);
-  } else if (name === "driver" && !value) {
-    setSelectedDriverUnit("N/A");
-  }
-};
+    const { name, value } = e.target;
+    setForm({ ...form, [name]: value });
 
-// Update your closeAddExpense function to reset the unit
-const closeAddExpense = () => {
-  setIsAddExpenseOpen(false);
-  setForm({ driver: "", amount: "" });
-  setSelectedDriverUnit("N/A"); // Reset unit when closing
-};
+    if (name === "driver" && value) {
+      // find driver by UID or fullName
+      const driver = driversList.find(
+        (d) => d.uid === value || d.fullName === value
+      );
+
+      if (driver) {
+        const unit = await fetchUnitForDriver(driver.uid);
+        setSelectedVehicle(unit || "N/A");
+      } else {
+        setSelectedVehicle("N/A");
+      }
+    }
+  };
+
+  const closeAddExpense = () => {
+    setIsAddExpenseOpen(false);
+    setForm({ driver: "", amount: "" });
+  };
 
   // Save Fuel Expense
   const saveFuelExpense = async () => {
-  if (!form.driver || !form.amount) {
-    showError("Driver and Amount are required.");
-    return;
-  }
-    setSaving(true);
     try {
-      const unitId = await fetchUnitForDriver(form.driver);
-      const logRef = await addDoc(collection(db, "fuelLogs"), {
-        Driver: form.driver,
-        status: "done",
+      setSaving(true);
+      
+      if (!form.driver || !form.amount) {
+        showError("Please fill in all fields.");
+        return;
+      }
+
+      // Find selected driver from driversList
+      const selectedDriver = driversList.find(
+        (d) => d.uid === form.driver || d.fullName === form.driver
+      );
+      if (!selectedDriver) {
+        showError("Driver not found.");
+        return;
+      }
+
+      // Get dispatched unit for this driver
+      const unit = await fetchUnitForDriver(selectedDriver.uid);
+      if (!unit) {
+        showError("No unit dispatched to this driver.");
+        return;
+      }
+
+      // Add a new fuel log
+      await addDoc(collection(db, "fuelLogs"), {
+        Driver: selectedDriver.fullName,
+        driverId: selectedDriver.uid,
         Officer: currentUser?.displayName || currentUser?.email,
+        Vehicle: unit, // Store the unit document ID
         fuelAmount: parseFloat(form.amount),
-        Vehicle: unitId,
+        status: "done",
         timestamp: serverTimestamp(),
       });
 
-      const driverDoc = driversList.find((d) => d.fullName === form.driver);
-      if (driverDoc) {
-        const docRef = doc(db, "users", driverDoc.uid);
-        await updateDoc(docRef, { fuelStatus: "done" });
-      }
+      // Update driver's status in users collection
+      const driverRef = doc(db, "users", selectedDriver.uid);
+      await updateDoc(driverRef, { fuelStatus: "done" });
 
-      // Log the activity
+      // Log the activity for adding fuel expense
       await logSystemActivity(
-        `Added fuel expense for ${form.driver} - ₱${parseFloat(form.amount).toFixed(2)}`,
+        `Added fuel expense: ₱${parseFloat(form.amount).toFixed(2)} for ${selectedDriver.fullName} (Unit: ${unit})`,
         userName
       );
 
-      showToast("Fuel expense added successfully!");
-      closeAddExpense();
-
-      setLogs((prev) => [
-        ...prev,
-        {
-          id: logRef.id,
-          driver: form.driver,
-          officer: currentUser?.displayName || currentUser?.email,
-          amount: parseFloat(form.amount),
-          status: "done",
-          vehicle: unitId,
-          date: new Date().toLocaleDateString(),
-          timestamp: serverTimestamp(),
-        },
-      ]);
+      showToast("Fuel expense saved successfully!");
+      setIsAddExpenseOpen(false);
+      setForm({ driver: "", amount: "" }); // reset form
     } catch (err) {
-      console.error(err);
+      console.error("Error saving fuel expense:", err);
       showError("Failed to save fuel expense.");
     } finally {
       setSaving(false);
@@ -423,7 +413,7 @@ const closeAddExpense = () => {
     log.driver,
     log.officer,
     `₱${log.amount.toFixed(2)}`,
-    log.vehicle,
+    log.vehicle, // This now contains the unit document ID
   ]);
 
   const toggleDropdown = () => {
@@ -518,7 +508,7 @@ const closeAddExpense = () => {
       cell: (r) => `₱${r.amount.toFixed(2)}`,
     },
     {
-      name: "Unit",
+      name: "Unit", // Changed from "Vehicle" to "Unit"
       selector: (r) => r.vehicle,
       sortable: true,
       center: true,
@@ -783,13 +773,20 @@ const closeAddExpense = () => {
                       className="w-full border rounded-md px-3 py-2 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300"
                     >
                       <option value="">Select Driver</option>
-                      {driversList.map((d) => (
-                        <option key={d.uid} value={d.fullName}>
-                          {d.fullName}
+                      {driversList.length > 0 ? (
+                        driversList.map((d) => (
+                          <option key={d.uid} value={d.fullName}>
+                            {d.fullName}
+                          </option>
+                        ))
+                      ) : (
+                        <option value="" disabled>
+                          No available drivers today
                         </option>
-                      ))}
+                      )}
                     </select>
                   </div>
+
                   <div className="col-span-3">
                     <label className="block text-sm text-gray-600 mb-1">
                       Amount
@@ -826,11 +823,11 @@ const closeAddExpense = () => {
                   </div>
                   <div className="col-span-1">
                     <label className="block text-sm text-gray-600 mb-1">
-                     Unit
+                      Unit
                     </label>
                     <input
                       name="unit"
-                      value={selectedDriverUnit}
+                      value={selectedVehicle}
                       disabled
                       className="w-full border rounded-md px-3 py-2 bg-gray-100 cursor-not-allowed"
                     />
@@ -852,27 +849,6 @@ const closeAddExpense = () => {
                     onClick={saveFuelExpense}
                     disabled={saving}
                   >
-                    {saving && (
-                      <svg
-                        className="h-4 w-4 animate-spin"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                      >
-                        <circle
-                          className="opacity-25"
-                          cx="12"
-                          cy="12"
-                          r="10"
-                          stroke="currentColor"
-                          strokeWidth="4"
-                        />
-                        <path
-                          className="opacity-75"
-                          fill="currentColor"
-                          d="M4 12a8 8 0 018-8v4A4 4 0 004 12z"
-                        />
-                      </svg>
-                    )}
                     {saving ? "Saving..." : "Save"}
                   </button>
                 </div>

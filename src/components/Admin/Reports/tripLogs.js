@@ -374,7 +374,7 @@ const TripLogs = () => {
       );
 
       // Log the export activity (role will be mapped in logSystemActivity)
-      await logSystemActivity("Printed Trip Logs Report", userName);
+      await logSystemActivity("Exported Trip Logs Report to CSV", userName);
 
       setIsDropdownOpen(false);
     } catch (error) {
@@ -393,7 +393,7 @@ const TripLogs = () => {
       );
 
       // Log the export activity (role will be mapped in logSystemActivity)
-      await logSystemActivity("Printed Trip Logs Report", userName);
+      await logSystemActivity("Exported Trip Logs Report to PDF", userName);
 
       setIsDropdownOpen(false);
     } catch (error) {

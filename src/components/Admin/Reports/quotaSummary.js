@@ -258,7 +258,7 @@ const QuotaSummary = () => {
       );
 
       // Log the export activity (role will be mapped in logSystemActivity)
-      await logSystemActivity("Printed Quota Summary Report ", userName);
+      await logSystemActivity("Exported Quota Summary Report to CSV", userName);
 
       setIsDropdownOpen(false);
     } catch (error) {
@@ -277,7 +277,7 @@ const QuotaSummary = () => {
       );
 
       // Log the export activity (role will be mapped in logSystemActivity)
-      await logSystemActivity("Printed Quota Summary Report", userName);
+      await logSystemActivity("Exported Quota Summary Report to PDF", userName);
 
       setIsDropdownOpen(false);
     } catch (error) {

@@ -129,7 +129,7 @@ const CashierDashboardAnalytics = () => {
           driver: log.Driver || "N/A",
           officer: log.Officer || "N/A",
           amount: parseFloat(log.fuelAmount) || 0,
-          vehicle: log.Vehicle || "N/A",
+          unit: log.Vehicle || "N/A", // Changed from 'vehicle' to 'unit' to match the data structure
           status: log.status || "pending",
           timestamp: log.timestamp?.toDate
             ? log.timestamp.toDate()
@@ -141,20 +141,6 @@ const CashierDashboardAnalytics = () => {
 
       // Apply date filtering immediately after fetching
       filterLogsByDate(logsData, startDate, endDate);
-
-      // Calculate stats
-      const officersSet = new Set();
-      let totalFuel = 0;
-      logsData.forEach((log) => {
-        if (log.status === "done" && log.officer) officersSet.add(log.officer);
-        totalFuel += log.amount;
-      });
-
-      setStats((prev) => ({
-        ...prev,
-        officersFueled: officersSet.size,
-        totalFuelExpense: totalFuel,
-      }));
 
       // Fetch latest fuel price
       const priceRef = collection(db, "fuelPrice");
@@ -221,68 +207,56 @@ const CashierDashboardAnalytics = () => {
     setCurrentPage(1); // Reset to first page when filtering
   };
 
-  // Replace the useEffect that calculates stats (around line 145-180):
-useEffect(() => {
-  if (!filteredLogs.length) {
-    setConsumptionData({});
-    setExpenseData({});
+  useEffect(() => {
+    if (!filteredLogs.length) {
+      setConsumptionData({});
+      setExpenseData({});
+      setStats({
+        driversRelievers: driverRelieverCount,
+        officersFueled: 0,
+        totalFuelExpense: 0,
+      });
+      return;
+    }
+
+    // Build Consumption (per Driver)
+    const consumptionByDriver = {};
+    filteredLogs.forEach((log) => {
+      if (log.driver) {
+        consumptionByDriver[log.driver] =
+          (consumptionByDriver[log.driver] || 0) + log.amount;
+      }
+    });
+    setConsumptionData(consumptionByDriver);
+
+    const expenseByDriver = {};
+    let totalFuel = 0;
+
+    filteredLogs.forEach((log) => {
+      if (log.driver) {
+        expenseByDriver[log.driver] =
+          (expenseByDriver[log.driver] || 0) + log.amount * fuelPrice;
+      }
+      totalFuel += log.amount * fuelPrice;
+    });
+
+    setExpenseData(expenseByDriver);
+
+    const totalFuelExpense = filteredLogs.reduce(
+      (sum, log) => sum + (parseFloat(log.amount) || 0),
+      0
+    );
+
     setStats({
       driversRelievers: driverRelieverCount,
-      officersFueled: 0,
-      totalFuelExpense: 0,
+      officersFueled: new Set(
+        filteredLogs
+          .filter((log) => log.status === "done" && log.driver)
+          .map((log) => log.driver)
+      ).size,
+      totalFuelExpense,
     });
-    return;
-  }
-
-  // Build Consumption (per Driver) - for all filtered logs
-  const consumptionByDriver = {};
-  filteredLogs.forEach((log) => {
-    if (log.driver) {
-      consumptionByDriver[log.driver] =
-        (consumptionByDriver[log.driver] || 0) + log.amount;
-    }
-  });
-  setConsumptionData(consumptionByDriver);
-
-  // Build Expense by Driver - for all filtered logs
-  const expenseByDriver = {};
-  filteredLogs.forEach((log) => {
-    if (log.driver) {
-      expenseByDriver[log.driver] =
-        (expenseByDriver[log.driver] || 0) + log.amount * fuelPrice;
-    }
-  });
-  setExpenseData(expenseByDriver);
-
-  // Calculate TODAY'S total fuel expenses only (from original logs, not filtered)
-  const today = getTodayDate();
-  let todayTotalExpense = 0;
-  
-  logs.forEach((log) => {  // Use 'logs' instead of 'filteredLogs'
-    const logDate = getDateFromTimestamp(log.timestamp);
-    if (logDate) {
-      const year = logDate.getFullYear();
-      const month = String(logDate.getMonth() + 1).padStart(2, "0");
-      const day = String(logDate.getDate()).padStart(2, "0");
-      const logDateString = `${year}-${month}-${day}`;
-      
-      // Only count expenses from today (without multiplying by price)
-      if (logDateString === today) {
-        todayTotalExpense += log.amount; // Just the amount, no multiplication
-      }
-    }
-  });
-
-  setStats({
-    driversRelievers: driverRelieverCount,
-    officersFueled: new Set(
-      filteredLogs
-        .filter((log) => log.status === "done" && log.driver)
-        .map((log) => log.driver)
-    ).size,
-    totalFuelExpense: todayTotalExpense, // Now shows only today's expenses
-  });
-}, [filteredLogs, logs, fuelPrice, driverRelieverCount]);
+  }, [filteredLogs, fuelPrice, driverRelieverCount]);
 
   useEffect(() => {
     fetchFuelLog();
@@ -345,15 +319,15 @@ useEffect(() => {
   };
 
   if (loading) {
-      return (
-        <div className="flex justify-center items-center h-64">
-          <div
-            className="animate-spin rounded-full h-32 w-32 border-b-2"
-            style={{ borderColor: primaryColor }}
-          ></div>
-        </div>
-      );
-    }
+    return (
+      <div className="flex justify-center items-center h-64">
+        <div
+          className="animate-spin rounded-full h-32 w-32 border-b-2"
+          style={{ borderColor: primaryColor }}
+        ></div>
+      </div>
+    );
+  }
 
   const lineData = {
     labels: priceData.map((d) => d.date),
@@ -451,7 +425,7 @@ useEffect(() => {
             <UserCheck className="h-6 w-6 text-yellow-600" />
           </div>
           <div>
-            <p className="text-sm text-gray-500">Fueled Drivers/Relievers</p>
+            <p className="text-sm text-gray-500">Fueled Drivers</p>
             <p className="text-2xl font-semibold">{stats.officersFueled}</p>
           </div>
         </div>
@@ -525,7 +499,7 @@ useEffect(() => {
           <table className="w-full text-left border border-gray-200 rounded-lg">
             <thead className="bg-gray-50">
               <tr>
-                {["Date", "Driver", "Officer", "Fuel Amount", "Vehicle"].map(
+                {["Date", "Driver", "Officer", "Fuel Amount", "Unit"].map(
                   (header) => (
                     <th
                       key={header}
@@ -546,7 +520,7 @@ useEffect(() => {
                   <td className="px-6 py-3 text-sm font-medium">
                     ₱{log.amount.toFixed(2)}
                   </td>
-                  <td className="px-6 py-3 text-sm">{log.vehicle}</td>
+                  <td className="px-6 py-3 text-sm">{log.unit}</td>
                 </tr>
               ))}
             </tbody>

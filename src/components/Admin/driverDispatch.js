@@ -26,7 +26,7 @@ export default function DriverDispatch() {
   const [driverSelections, setDriverSelections] = useState({});
   const [loading, setLoading] = useState(true);
   const [err] = useState(null);
-  const [userRole, setUserRole] = useState("User"); // Add state for user role
+  const [userRole, setUserRole] = useState("User");
 
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("");
@@ -72,20 +72,19 @@ export default function DriverDispatch() {
 
       if (userDocSnap.exists()) {
         const userData = userDocSnap.data();
-        setUserRole(userData.role || "User"); // Default to "User" if role not found
+        setUserRole(userData.role || "User");
       } else {
-        setUserRole("User"); // Default role if user document doesn't exist
+        setUserRole("User");
       }
     } catch (error) {
       console.error("Error fetching user role:", error);
-      setUserRole("User"); // Fallback to default role
+      setUserRole("User");
     }
   }, [currentUser?.uid]);
 
   // Function to log system activities with mapped role
   const logSystemActivity = async (activity, performedBy, role = null) => {
     try {
-      // Use provided role or fall back to userRole from state
       const actualRole = role || userRole;
       const displayRole = mapRoleForLogging(actualRole);
 
@@ -148,7 +147,7 @@ export default function DriverDispatch() {
       const temp = snap.docs.map((d) => ({
         id: d.id,
         vehicleID: d.data()?.vehicleID || "",
-        unit: d.data()?.unit || "",
+        fuel: d.data()?.fuel || "",
         routeId: d.data()?.routeId || "",
         status: d.data()?.status || "Active",
       }));
@@ -166,9 +165,9 @@ export default function DriverDispatch() {
 
     const unsubUnitData = onSnapshot(collection(db, "unit"), (snap) => {
       const temp = snap.docs.map((d) => ({
-        id: d.id,
+        id: d.id, // This is the unit document ID (like VAB12345)
         unitHolder: d.data()?.unitHolder || null,
-        vehicleID: d.data()?.vehicleID || "",
+        vehicleID: d.data()?.vehicleID || "", // This matches vehicle.vehicleID field
         serialNo: d.data()?.serialNo || "",
         status: d.data()?.status || "Available",
       }));
@@ -214,6 +213,7 @@ export default function DriverDispatch() {
 
       particular = latestLog?.Particular || "Not yet selected";
 
+      // Check if driver has a dispatched unit
       const dispatchedUnit = unitData.find(
         (u) => u.unitHolder === driver.id && u.status === "Dispatched"
       );
@@ -221,29 +221,38 @@ export default function DriverDispatch() {
       if (dispatchedUnit) {
         isDispatched = true;
         status = "Dispatched";
+        unit = dispatchedUnit.id; // Unit document ID (e.g., VAB12345)
+        serialNo = dispatchedUnit.serialNo || "N/A";
+        
+        // Find the vehicle that matches the unit's vehicleID
         const dispatchedVehicle = vehicles.find(
-          (v) => v.id === dispatchedUnit.vehicleID
+          (v) => v.vehicleID === dispatchedUnit.vehicleID
         );
         if (dispatchedVehicle) {
-          vehicleID = dispatchedVehicle.id;
-          unit = dispatchedUnit.id;
-          serialNo = dispatchedUnit.serialNo || "N/A";
+          vehicleID = dispatchedVehicle.vehicleID;
           routeId = dispatchedVehicle.routeId;
           const dispatchedRoute = routes.find((r) => r.id === routeId);
           if (dispatchedRoute) routeName = dispatchedRoute.route;
         }
       } else if (selections.vehicleID) {
-        const selectedVehicleDoc = vehicles.find(
-          (v) => v.id === selections.vehicleID
+        // Driver has selected a vehicle but not yet dispatched
+        const selectedVehicle = vehicles.find(
+          (v) => v.vehicleID === selections.vehicleID
         );
-        if (selectedVehicleDoc) {
-          vehicleID = selectedVehicleDoc.id;
+        if (selectedVehicle) {
+          vehicleID = selectedVehicle.vehicleID;
+          routeId = selectedVehicle.routeId;
+          
+          // Find available unit that matches this vehicle's vehicleID
           const availableUnit = unitData.find(
-            (u) => u.id === selectedVehicleDoc.unit && u.status !== "Dispatched"
+            (u) => u.vehicleID === selectedVehicle.vehicleID && u.status === "Available"
           );
-          unit = availableUnit?.id || "N/A";
-          serialNo = availableUnit?.serialNo || "N/A";
-          routeId = selectedVehicleDoc.routeId;
+          
+          if (availableUnit) {
+            unit = availableUnit.id; // Unit document ID
+            serialNo = availableUnit.serialNo || "N/A";
+          }
+          
           const selectedRoute = routes.find((r) => r.id === routeId);
           if (selectedRoute) routeName = selectedRoute.route;
           status = "Available";
@@ -343,12 +352,13 @@ export default function DriverDispatch() {
         return;
       }
 
-      const selectedVehicle = vehicles.find((v) => v.id === value);
+      // Find the selected vehicle by vehicleID
+      const selectedVehicle = vehicles.find((v) => v.vehicleID === value);
       if (!selectedVehicle) return;
 
-      // Find the first available unit for this vehicle
+      // Find available unit that matches this vehicle's vehicleID
       const availableUnit = unitData.find(
-        (u) => u.id === selectedVehicle.unit && u.status !== "Dispatched"
+        (u) => u.vehicleID === selectedVehicle.vehicleID && u.status === "Available"
       );
 
       setDriverSelections((prev) => ({
@@ -384,23 +394,25 @@ export default function DriverDispatch() {
         return alert("Please select a vehicle and particular.");
 
       const selectedVehicle = vehicles.find(
-        (v) => v.id === selections.vehicleID
+        (v) => v.vehicleID === selections.vehicleID
       );
       if (!selectedVehicle) return alert("Selected vehicle not found.");
 
-      // Look for an available unit where unit.vehicleID matches the **vehicle doc ID**
+      // Find an available unit that matches the vehicle's vehicleID
       const availableUnit = unitData.find(
-        (u) => u.id === selectedVehicle.unit && u.status !== "Dispatched"
+        (u) => u.vehicleID === selectedVehicle.vehicleID && u.status === "Available"
       );
       if (!availableUnit)
         return alert("No available unit found for this vehicle.");
 
+      // Update the unit to be dispatched with the driver as unitHolder
       const unitRef = doc(db, "unit", availableUnit.id);
       await updateDoc(unitRef, {
         unitHolder: row.driverId,
         status: "Dispatched",
       });
 
+      // Update local state
       setUnitData((prev) =>
         prev.map((u) =>
           u.id === availableUnit.id
@@ -409,6 +421,7 @@ export default function DriverDispatch() {
         )
       );
 
+      // Add driver log
       await addDoc(collection(db, "driverLogs"), {
         Particular: selections.particular,
         Route:
@@ -419,9 +432,10 @@ export default function DriverDispatch() {
         email: drivers.find((d) => d.id === row.driverId)?.email,
       });
 
-      // Log system activity for driver dispatch (simplified)
+      // Log system activity for driver dispatch
       await logSystemActivity(`Dispatched ${row.driverName}`, userName);
 
+      // Clear driver selections
       setDriverSelections((prev) => {
         const newSel = { ...prev };
         delete newSel[row.driverId];
@@ -488,7 +502,7 @@ export default function DriverDispatch() {
         )
       );
 
-      // Log system activity for driver undispatch (simplified)
+      // Log system activity for driver undispatch
       await logSystemActivity(
         `Undispatched ${pendingUndispatch.driverName}`,
         userName
@@ -540,14 +554,17 @@ export default function DriverDispatch() {
               {r.vehicleID || "N/A"}
             </div>
           );
-        const dispatchedVehicleIDs = unitData
-          .filter(
-            (u) => u.status === "Dispatched" && u.unitHolder !== r.driverId
-          )
-          .map((u) => u.vehicleID);
-        const availableVehicles = vehicles.filter(
-          (v) => !dispatchedVehicleIDs.includes(v.id)
-        );
+        
+        // Get vehicles that have available units
+        const availableVehicles = vehicles.filter((vehicle) => {
+          return unitData.some(
+            (unit) => 
+              unit.vehicleID === vehicle.vehicleID && 
+              unit.status === "Available" && 
+              unit.unitHolder !== r.driverId
+          );
+        });
+
         return (
           <select
             value={r.vehicleID || ""}
@@ -556,8 +573,8 @@ export default function DriverDispatch() {
           >
             <option value="">Select Vehicle</option>
             {availableVehicles.map((vehicle) => (
-              <option key={vehicle.id} value={vehicle.id}>
-                {vehicle.id}
+              <option key={vehicle.id} value={vehicle.vehicleID}>
+                {vehicle.vehicleID}
               </option>
             ))}
           </select>

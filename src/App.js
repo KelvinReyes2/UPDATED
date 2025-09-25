@@ -1,5 +1,4 @@
-// src/App.js
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   BrowserRouter as Router,
   Routes,
@@ -9,12 +8,13 @@ import {
 import { onAuthStateChanged } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 
-import { auth, db } from "./firebase"; // your Firebase config
+import { auth, db } from "./firebase";
 
 // Layout + Routes
 import Layout from "./components/Config/layout";
 import PrivateRoute from "./privateRoute";
 import Login from "./components/login";
+import Forbidden from "./components/Forbidden";
 
 // Admin pages
 import DashboardAdmin from "./components/Admin/dashboardAdmin";
@@ -40,33 +40,25 @@ import UserAccess from "./components/Super Admin/UACSuper";
 import PassRest from "./components/Super Admin/PasswordSuper";
 import Maintenance from "./components/Super Admin/MaintenanceSuper";
 
-const Forbidden = () => (
-  <div style={{ padding: 24 }}>
-    <h1>403 — Forbidden</h1>
-    <p>You don’t have permission to view this page.</p>
-  </div>
-);
-
 function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // 🔑 Listen to Firebase Auth and load Firestore user document
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         const ref = doc(db, "users", firebaseUser.uid);
         const snap = await getDoc(ref);
 
-        if (snap.exists()) {
-          setUser({
-            uid: firebaseUser.uid,
-            email: firebaseUser.email,
-            ...snap.data(), // should include role + permissions
-          });
-        } else {
-          setUser(null);
-        }
+        setUser(
+          snap.exists()
+            ? {
+                uid: firebaseUser.uid,
+                email: firebaseUser.email,
+                ...snap.data(),
+              }
+            : null
+        );
       } else {
         setUser(null);
       }
@@ -81,7 +73,7 @@ function App() {
   return (
     <Router>
       <Routes>
-        {/* Public Route */}
+        {/* Public */}
         <Route path="/login" element={<Login />} />
 
         {/* Protected Layout */}
@@ -152,13 +144,11 @@ function App() {
                 allowedRoles={["Admin"]}
                 requiredPermission="Vehicle Management"
                 user={user}
-                loading={loading}
               >
                 <VehicleManagement />
               </PrivateRoute>
             }
           />
-
           <Route
             path="Reports/transactionOverview"
             element={
@@ -321,7 +311,7 @@ function App() {
           />
         </Route>
 
-        {/* Forbidden + catch-all */}
+        {/* Forbidden + Catch-all */}
         <Route path="/forbidden" element={<Forbidden />} />
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>

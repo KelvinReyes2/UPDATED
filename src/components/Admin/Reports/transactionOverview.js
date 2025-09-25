@@ -406,7 +406,7 @@ const TransactionOverview = () => {
       
       // Log the export activity
       await logSystemActivity(
-        "Printed Transaction Overview Report",
+        "Exported Transaction Overview Report to CSV",
         userName
       );
       
@@ -428,7 +428,7 @@ const TransactionOverview = () => {
       
       // Log the export activity
       await logSystemActivity(
-        "Printed Transaction Overview Report",
+        "Exported Transaction Overview Report to PDF",
         userName
       );
       
