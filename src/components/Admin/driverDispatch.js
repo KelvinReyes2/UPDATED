@@ -555,8 +555,14 @@ export default function DriverDispatch() {
             </div>
           );
         
-        // Get vehicles that have available units
+        // Get vehicles that have available units AND are not inactive
         const availableVehicles = vehicles.filter((vehicle) => {
+          // First check if vehicle status is not "Inactive"
+          if (vehicle.status === "Inactive") {
+            return false;
+          }
+          
+          // Then check if it has available units
           return unitData.some(
             (unit) => 
               unit.vehicleID === vehicle.vehicleID && 
