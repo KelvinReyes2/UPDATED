@@ -177,13 +177,25 @@ export default function VehicleManagement() {
     }
   };
 
-  // Function to save new unit
+  // Function to check if unit already exists
+  const checkUnitExists = (unitId) => {
+    return units.some(unit => unit.id.toLowerCase() === unitId.toLowerCase());
+  };
+
+  // Function to save new unit with duplicate check
   const saveNewUnit = async () => {
     if (!newUnitText.trim()) return;
 
+    const unitId = newUnitText.trim();
+    
+    // Check if unit already exists
+    if (checkUnitExists(unitId)) {
+      alert("This unit ID already exists. Please choose a different one.");
+      return;
+    }
+
     setSavingUnit(true);
     try {
-      const unitId = newUnitText.trim();
       const nextSerialNo = await generateNextSerialNumber();
       
       // Remove the 'unit' field, just use document ID and other fields
@@ -220,6 +232,27 @@ export default function VehicleManagement() {
     setIsAddingUnit(false);
     setNewUnitText("");
   };
+
+  // Function to get available units for selection
+  const getAvailableUnitsForAdd = useMemo(() => {
+    return units.filter(unit => {
+      // For adding new vehicle: only show truly available units
+      return unit.status === "Available" && (!unit.vehicleID || unit.vehicleID === "");
+    });
+  }, [units]);
+
+  // Function to get available units for editing
+  const getAvailableUnitsForEdit = useMemo(() => {
+    if (!viewing) return [];
+    
+    return units.filter(unit => {
+      // For editing: show available units OR units assigned to current vehicle
+      const isAvailable = unit.status === "Available" && (!unit.vehicleID || unit.vehicleID === "");
+      const isCurrentVehicleUnit = unit.vehicleID === viewing.vehicleID;
+      
+      return isAvailable || isCurrentVehicleUnit;
+    });
+  }, [units, viewing]);
 
   // Load units from unit collection
   useEffect(() => {
@@ -597,6 +630,14 @@ export default function VehicleManagement() {
         return;
       }
 
+      // Check if selected unit is still available
+      const selectedUnit = units.find(u => u.id === form.unit);
+      if (!selectedUnit || (selectedUnit.vehicleID && selectedUnit.vehicleID !== "")) {
+        setErrors({ unit: "Selected unit is no longer available." });
+        setSaving(false);
+        return;
+      }
+
       // Save vehicle (without unit info - only vehicleID, fuel, routeId, status)
       await setDoc(vehicleRef, {
         vehicleID: form.vehicleID.trim(),
@@ -644,6 +685,16 @@ export default function VehicleManagement() {
     try {
       const prevUnit = units.find((u) => u.vehicleID === viewing.vehicleID);
       const newUnit = edit.unit;
+
+      // Check if selected unit is available (unless it's the current unit)
+      if (newUnit && newUnit !== (prevUnit ? prevUnit.id : "")) {
+        const selectedUnit = units.find(u => u.id === newUnit);
+        if (!selectedUnit || (selectedUnit.vehicleID && selectedUnit.vehicleID !== viewing.vehicleID)) {
+          alert("Selected unit is no longer available.");
+          setSavingEdit(false);
+          return;
+        }
+      }
 
       // Update vehicle document (no unit info stored here)
       await setDoc(doc(db, "vehicle", viewing.id), {
@@ -942,7 +993,7 @@ export default function VehicleManagement() {
                         onChange={onForm}
                       >
                         <option value="">Select Unit</option>
-                        {units.filter(u => u.status === "Available").map((u) => (
+                        {getAvailableUnitsForAdd.map((u) => (
                           <option key={u.id} value={u.id}>
                             {u.id}
                           </option>
@@ -1200,13 +1251,11 @@ export default function VehicleManagement() {
                   className="w-full border rounded-md px-3 py-2 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300"
                 >
                   <option value="">Select Unit</option>
-                  {units
-                    .filter((u) => u.status === "Available" || u.vehicleID === viewing.vehicleID)
-                    .map((u) => (
-                      <option key={u.id} value={u.id}>
-                        {u.id}
-                      </option>
-                    ))}
+                  {getAvailableUnitsForEdit.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.id} {u.vehicleID === viewing.vehicleID ? "(Current)" : ""}
+                    </option>
+                  ))}
                 </select>
               </div>
 
@@ -1306,4 +1355,4 @@ export default function VehicleManagement() {
       )}
     </div>
   );
-} 
+}
