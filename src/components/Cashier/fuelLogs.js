@@ -6,6 +6,7 @@ import {
   addDoc,
   serverTimestamp,
   updateDoc,
+  getDoc, 
   doc,
   orderBy,
   query,
@@ -44,6 +45,7 @@ const FuelLogsPage = () => {
   const [showErrorToast, setShowErrorToast] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [showWarningModal, setShowWarningModal] = useState(false);
+  const [currentUserRole, setCurrentUserRole] = useState("Unknown");
   const [selectedVehicle, setSelectedVehicle] = useState("N/A");
   const [dateFilter, setDateFilter] = useState(
     new Date().toISOString().split("T")[0]
@@ -72,6 +74,8 @@ const FuelLogsPage = () => {
         hour12: true 
       });
 
+      
+
       // Format date (e.g., September 17, 2025)
       const dateStr = date.toLocaleDateString('en-US', { 
         month: 'long', 
@@ -89,12 +93,31 @@ const FuelLogsPage = () => {
     }
   };
 
+  // Fetch current user's role
+  useEffect(() => {
+    const fetchCurrentUserRole = async () => {
+      if (currentUser) {
+        try {
+          const userDoc = await getDoc(doc(db, "users", currentUser.uid));
+          if (userDoc.exists()) {
+            setCurrentUserRole(userDoc.data().role || "Unknown");
+          }
+        } catch (error) {
+          console.error("Error fetching user role:", error);
+        }
+      }
+    };
+
+    fetchCurrentUserRole();
+  }, [currentUser]);
+
   // Function to log system activities
-  const logSystemActivity = async (activity, performedBy) => {
+  const logSystemActivity = async (activity, performedBy, role) => {
     try {
       await addDoc(collection(db, "systemLogs"), {
         activity,
         performedBy,
+        role: currentUserRole,
         timestamp: serverTimestamp(),
       });
       console.log("Fuel activity logged successfully");
@@ -407,7 +430,7 @@ const FuelLogsPage = () => {
       await updateDoc(driverRef, { fuelStatus: "done" });
 
       await logSystemActivity(
-        `Added fuel expense: ₱${parseFloat(form.amount).toFixed(2)} for ${selectedDriver.fullName} (Unit: ${unit})`,
+        `Added fuel expense: ₱${parseFloat(form.amount).toFixed(2)} for ${selectedDriver.fullName}`,
         userName
       );
 
