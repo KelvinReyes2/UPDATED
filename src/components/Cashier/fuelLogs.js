@@ -334,7 +334,8 @@ const FuelLogsPage = () => {
 
       await logSystemActivity(
         `Updated fuel price to ₱${price.toFixed(2)}`,
-        userName
+        userName,
+        currentUserRole
       );
 
       showToast("Fuel price updated successfully!");
