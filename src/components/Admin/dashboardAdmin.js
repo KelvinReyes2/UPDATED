@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { collection, query, getDocs, orderBy } from "firebase/firestore";
-import { db } from "../../firebase"; // Adjust path as needed
+import { db } from "../../firebase";
 import { Pie, Bar, Line } from "react-chartjs-2";
 import {
   Chart as ChartJS,
@@ -26,16 +26,71 @@ ChartJS.register(
   Legend,
   ArcElement,
   LineElement,
-  PointElement // Required for line charts
+  PointElement
 );
 
-// Get today's date in YYYY-MM-DD format - moved to top level
+// Get today's date in YYYY-MM-DD format
 const getTodayDate = () => {
   const today = new Date();
   const year = today.getFullYear();
   const month = String(today.getMonth() + 1).padStart(2, "0");
   const day = String(today.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+};
+
+// Helper function to convert timestamp to Date object
+const getDateFromTimestamp = (timestamp) => {
+  try {
+    if (timestamp && typeof timestamp.toDate === "function") {
+      return timestamp.toDate();
+    } else if (timestamp && timestamp.seconds) {
+      return new Date(timestamp.seconds * 1000);
+    } else if (timestamp instanceof Date) {
+      return timestamp;
+    } else if (
+      typeof timestamp === "string" &&
+      !isNaN(Date.parse(timestamp))
+    ) {
+      return new Date(timestamp);
+    } else {
+      return null;
+    }
+  } catch (error) {
+    console.error("Error converting timestamp:", error);
+    return null;
+  }
+};
+
+// Helper function to format timestamp with time and date
+const formatTimestamp = (timestamp) => {
+  try {
+    const date = getDateFromTimestamp(timestamp);
+    if (!date) {
+      return { time: "N/A", date: "N/A", fullDateTime: "N/A" };
+    }
+
+    // Format time (e.g., 10:28 AM)
+    const time = date.toLocaleTimeString('en-US', { 
+      hour: '2-digit', 
+      minute: '2-digit',
+      hour12: true 
+    });
+
+    // Format date (e.g., September 17, 2025)
+    const dateStr = date.toLocaleDateString('en-US', { 
+      month: 'long', 
+      day: 'numeric', 
+      year: 'numeric' 
+    });
+
+    // Full date time for export
+    const fullDateTime = `${dateStr}, ${time}`;
+
+    return { time, date: dateStr, fullDateTime };
+  } catch (error) {
+    console.error("Error formatting timestamp:", error);
+    return { time: "Invalid", date: "Invalid", fullDateTime: "Invalid" };
+  }
 };
 
 // Dashboard Analytics Component
@@ -61,36 +116,8 @@ const DashboardAnalytics = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const transactionsPerPage = 10;
 
-  const primaryColor = "#364C6E"; // Primary color
-  const secondaryColor = "#405a88"; // Secondary color
-
-  // Helper function to convert timestamp to Date object
-  const getDateFromTimestamp = (timestamp) => {
-    try {
-      // Handle Firestore Timestamp
-      if (timestamp && typeof timestamp.toDate === "function") {
-        return timestamp.toDate();
-      }
-      // Handle timestamp object with seconds property (Firestore)
-      else if (timestamp && timestamp.seconds) {
-        return new Date(timestamp.seconds * 1000);
-      }
-      // Handle JavaScript Date
-      else if (timestamp instanceof Date) {
-        return timestamp;
-      } else if (
-        typeof timestamp === "string" &&
-        !isNaN(Date.parse(timestamp))
-      ) {
-        return new Date(timestamp);
-      } else {
-        return null;
-      }
-    } catch (error) {
-      console.error("Error converting timestamp:", error);
-      return null;
-    }
-  };
+  const primaryColor = "#364C6E";
+  const secondaryColor = "#405a88";
 
   // Fetch transactions from Firestore
   const fetchTransactions = useCallback(async () => {
@@ -127,7 +154,7 @@ const DashboardAnalytics = () => {
       const routesData = [];
       querySnapshot.forEach((doc) => {
         if (!routesData.includes(doc.data().Route)) {
-          routesData.push(doc.data().Route); // Only add unique routes
+          routesData.push(doc.data().Route);
         }
       });
       setRoutes(routesData);
@@ -140,49 +167,34 @@ const DashboardAnalytics = () => {
   const filterTransactions = useCallback(() => {
     let filtered = transactions;
 
-    // Date filter - Start date shows only that specific date, End date creates a range
     if (startDate || endDate) {
       filtered = filtered.filter((transaction) => {
         const transactionDate = getDateFromTimestamp(transaction.timestamp);
-        if (transactionDate) {
-          // Convert transaction date to local date string in YYYY-MM-DD format
-          const year = transactionDate.getFullYear();
-          const month = String(transactionDate.getMonth() + 1).padStart(2, "0");
-          const day = String(transactionDate.getDate()).padStart(2, "0");
-          const transactionDateString = `${year}-${month}-${day}`;
+        if (!transactionDate) return false;
+        
+        const year = transactionDate.getFullYear();
+        const month = String(transactionDate.getMonth() + 1).padStart(2, "0");
+        const day = String(transactionDate.getDate()).padStart(2, "0");
+        const transactionDateString = `${year}-${month}-${day}`;
 
-          // If both start and end date are provided, use range filtering
-          if (startDate && endDate) {
-            return (
-              transactionDateString >= startDate &&
-              transactionDateString <= endDate
-            );
-          }
-          // If only start date is provided, show only that specific date
-          else if (startDate) {
-            return transactionDateString === startDate;
-          }
-          // If only end date is provided, show up to that date
-          else if (endDate) {
-            return transactionDateString <= endDate;
-          }
-
-          return true;
-        } else {
-          // If timestamp is invalid/null, exclude it when date filters are applied
-          return false;
+        if (startDate && !endDate) {
+          return transactionDateString === startDate;
+        } else if (startDate && endDate) {
+          return transactionDateString >= startDate && transactionDateString <= endDate;
+        } else if (!startDate && endDate) {
+          return transactionDateString <= endDate;
         }
+        
+        return true;
       });
     }
 
-    // Route filter
     if (selectedRoute) {
       filtered = filtered.filter(
         (transaction) => transaction.route === selectedRoute
       );
     }
 
-    // Driver search filter
     if (driverSearch.trim()) {
       const searchTerm = driverSearch.trim().toLowerCase();
       filtered = filtered.filter(
@@ -205,11 +217,8 @@ const DashboardAnalytics = () => {
 
       snapshot.forEach((doc) => {
         const data = doc.data();
-
-        // Convert Firestore timestamp or string to Date
         const lastUpdated = getDateFromTimestamp(data.lastUpdated);
 
-        // Only count if lastUpdated is within the filter range
         let withinRange = true;
         if (startDate || endDate) {
           if (lastUpdated) {
@@ -218,7 +227,6 @@ const DashboardAnalytics = () => {
             const day = String(lastUpdated.getDate()).padStart(2, "0");
             const lastUpdatedString = `${year}-${month}-${day}`;
 
-            // Apply same logic as transaction filtering
             if (startDate && endDate) {
               withinRange =
                 lastUpdatedString >= startDate && lastUpdatedString <= endDate;
@@ -244,10 +252,6 @@ const DashboardAnalytics = () => {
     }
   }, [startDate, endDate]);
 
-  useEffect(() => {
-    fetchQuota();
-  }, [fetchQuota]);
-
   // Calculate statistics
   const calculateStats = useCallback(() => {
     const newStats = {
@@ -263,7 +267,6 @@ const DashboardAnalytics = () => {
     filteredTransactions.forEach((transaction) => {
       const fare = parseFloat(transaction.farePrice) || 0;
 
-      // Count all tickets
       newStats.totalTickets += 1;
 
       if (transaction.isVoided) {
@@ -271,7 +274,6 @@ const DashboardAnalytics = () => {
         return;
       }
 
-      // Count fare and payment methods
       newStats.totalFare += fare;
       if (transaction.paymentMethod === "Cash") {
         newStats.cashPayments += 1;
@@ -287,7 +289,7 @@ const DashboardAnalytics = () => {
 
   // Reset filters
   const resetFilters = () => {
-    setStartDate("");
+    setStartDate(getTodayDate());
     setEndDate("");
     setSelectedRoute("");
     setDriverSearch("");
@@ -351,7 +353,7 @@ const DashboardAnalytics = () => {
   const topRoutesData = () => {
     const routeCount = {};
     filteredTransactions.forEach((transaction) => {
-      const route = transaction.route; // Ensure this is the correct field in your data
+      const route = transaction.route;
       if (route) {
         routeCount[route] = routeCount[route] ? routeCount[route] + 1 : 1;
       }
@@ -389,7 +391,7 @@ const DashboardAnalytics = () => {
     };
   };
 
-  // Pie chart data for passenger types (Student, PWD, Senior, Regular)
+  // Pie chart data for passenger types
   const passengerTypeData = () => {
     const typeCount = {
       Student: 0,
@@ -398,10 +400,8 @@ const DashboardAnalytics = () => {
       Regular: 0,
     };
 
-    // Include all transactions in the count (not filtering out voided ones)
     filteredTransactions.forEach((transaction) => {
-      const type = transaction.passengerType || "Regular"; // Default to "Regular"
-      // Increment the count for the passenger type
+      const type = transaction.passengerType || "Regular";
       if (typeCount[type] !== undefined) {
         typeCount[type] += 1;
       }
@@ -585,7 +585,6 @@ const DashboardAnalytics = () => {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {/* Total Fare Collection */}
         <div className="bg-white rounded-lg shadow-md p-6 flex items-center justify-between">
           <div
             className="flex items-center justify-center w-12 h-12 rounded-full mr-4"
@@ -610,7 +609,6 @@ const DashboardAnalytics = () => {
           </div>
         </div>
 
-        {/* Total Tickets */}
         <div className="bg-white rounded-lg shadow-md p-6 flex items-center justify-between">
           <div
             className="p-3 rounded-full mr-4"
@@ -633,7 +631,6 @@ const DashboardAnalytics = () => {
           </div>
         </div>
 
-        {/* Cash Payments */}
         <div className="bg-white rounded-lg shadow-md p-6 flex items-center justify-between">
           <div className="p-3 rounded-full bg-green-100 mr-4">
             <svg
@@ -655,7 +652,6 @@ const DashboardAnalytics = () => {
           </div>
         </div>
 
-        {/* Card Payments */}
         <div className="bg-white rounded-lg shadow-md p-6 flex items-center justify-between">
           <div className="p-3 rounded-full bg-blue-100 mr-4">
             <svg
@@ -844,7 +840,7 @@ const DashboardAnalytics = () => {
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Date
+                  Timestamp
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Fare Price
@@ -870,50 +866,56 @@ const DashboardAnalytics = () => {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {currentTransactions.map((transaction) => (
-                <tr key={transaction.id}>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {new Date(transaction.timestamp).toLocaleDateString()}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    ₱{parseFloat(transaction.farePrice).toFixed(2)}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    <span
-                      className={`ml-3 px-7 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                        transaction.paymentMethod === "Cash"
-                          ? "bg-green-100 text-green-800"
-                          : "bg-blue-100 text-blue-800"
-                      }`}
-                    >
-                      {transaction.paymentMethod}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {transaction.pickUp || "N/A"}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {transaction.dropOff || "N/A"}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {transaction.driverName || "N/A"}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {transaction.invoiceNum || "N/A"}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    <span
-                      className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                        transaction.isVoided
-                          ? "bg-red-100 text-red-800"
-                          : "bg-green-100 text-green-800"
-                      }`}
-                    >
-                      {transaction.isVoided ? "Voided" : "Successful"}
-                    </span>
-                  </td>
-                </tr>
-              ))}
+              {currentTransactions.map((transaction) => {
+                const { time, date } = formatTimestamp(transaction.timestamp);
+                return (
+                  <tr key={transaction.id}>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <div className="text-sm">
+                        <div>{time}</div>
+                        <div className="text-gray-600">{date}</div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      ₱{parseFloat(transaction.farePrice).toFixed(2)}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <span
+                        className={`ml-3 px-7 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                          transaction.paymentMethod === "Cash"
+                            ? "bg-green-100 text-green-800"
+                            : "bg-blue-100 text-blue-800"
+                        }`}
+                      >
+                        {transaction.paymentMethod}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {transaction.pickUp || "N/A"}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {transaction.dropOff || "N/A"}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {transaction.driverName || "N/A"}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {transaction.invoiceNum || "N/A"}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <span
+                        className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                          transaction.isVoided
+                            ? "bg-red-100 text-red-800"
+                            : "bg-green-100 text-green-800"
+                        }`}
+                      >
+                        {transaction.isVoided ? "Voided" : "Successful"}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -923,7 +925,6 @@ const DashboardAnalytics = () => {
             {filteredTransactions.length} transactions
           </p>
           <div className="flex items-center space-x-2">
-            {/* Previous Button */}
             <button
               onClick={handlePreviousPage}
               disabled={currentPage === 1}
@@ -945,7 +946,6 @@ const DashboardAnalytics = () => {
               </svg>
             </button>
 
-            {/* Next Button */}
             <button
               onClick={handleNextPage}
               disabled={

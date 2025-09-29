@@ -4,7 +4,7 @@ import { Outlet, useLocation } from "react-router-dom";
 import DataTable from "react-data-table-component";
 import { FaEye } from "react-icons/fa";
 import { db } from "../../firebase";
-import { collection, onSnapshot, doc, setDoc } from "firebase/firestore";
+import { collection, onSnapshot, doc, setDoc, addDoc, serverTimestamp } from "firebase/firestore";
 
 export default function UACSuper() {
   const [showSuccessToast, setShowSuccessToast] = useState(false);
@@ -25,6 +25,10 @@ export default function UACSuper() {
   const [viewing, setViewing] = useState(null);
   const [edit, setEdit] = useState(null);
   const [savingEdit, setSavingEdit] = useState(false);
+
+  const auth = getAuth();
+  const currentUser = auth.currentUser;
+  const userName = currentUser?.displayName || currentUser?.email || "Unknown User";
 
   // Updated available permissions to match actual admin permissions
   // Permissions grouped by role (copied from App.js)
@@ -52,7 +56,21 @@ export default function UACSuper() {
 
   // Available roles (aligning with your system)
   const availableRoles = ["Admin", "Cashier", "Super"];
-  console.log(getAuth().currentUser);
+
+  // Function to log system activities
+  const logSystemActivity = async (activity, performedBy, role = "Super Admin") => {
+    try {
+      await addDoc(collection(db, "systemLogs"), {
+        activity,
+        performedBy,
+        role,
+        timestamp: serverTimestamp(),
+      });
+      console.log("Activity logged successfully");
+    } catch (error) {
+      console.error("Error logging activity:", error);
+    }
+  };
 
   useEffect(() => {
     if (!isUACPage) return;
@@ -65,13 +83,15 @@ export default function UACSuper() {
           snap.forEach((d) => {
             const data = d.data();
             if (data && ["Admin", "Cashier"].includes(data.role)) {
-              // Filter for specific roles //removed Super admin here
+              // Filter for specific roles
               temp.push({
                 id: d.id,
                 email: data.email || "",
                 role: data.role || "User",
                 permissions: data.permissions || [],
                 createdAt: data.createdAt || new Date(),
+                firstName: data.firstName || "",
+                lastName: data.lastName || "",
               });
             }
           });
@@ -138,9 +158,9 @@ export default function UACSuper() {
       <span
         className={`inline-flex items-center justify-center px-3 py-1 rounded-full text-xs font-semibold ${getColorClasses(value)}`}
         style={{
-          minWidth: "80px", // Ensures the badge has a minimum width
-          maxWidth: "auto", // Allows the badge to expand as needed
-          whiteSpace: "nowrap", // Prevents text from wrapping inside the badge
+          minWidth: "80px",
+          maxWidth: "auto",
+          whiteSpace: "nowrap",
         }}
       >
         {displayRole}
@@ -275,14 +295,42 @@ export default function UACSuper() {
 
     setSavingEdit(true);
     try {
+      const roleDisplayNames = {
+        Admin: "System Admin",
+        Cashier: "Cashier",
+        Super: "Super Admin",
+      };
+
+      const oldRoleDisplay = roleDisplayNames[viewing.role] || viewing.role;
+      const newRoleDisplay = roleDisplayNames[edit.role] || edit.role;
+
+      // Get user full name (firstName + lastName) or fallback to email
+      const userFullName = viewing.firstName && viewing.lastName 
+        ? `${viewing.firstName} ${viewing.lastName}`.trim()
+        : viewing.email || "Unknown User";
+
       await setDoc(
         doc(db, "users", viewing.id),
         {
           role: edit.role,
           permissions: edit.permissions,
         },
-        { merge: true }, // ✅ ensures other fields like address, firstName, etc. remain untouched
+        { merge: true },
       );
+
+      // Create activity log message
+      let activityMessage = "";
+      
+      if (viewing.role !== edit.role) {
+        // Role was changed
+        activityMessage = `Changed user role for ${userFullName} from ${oldRoleDisplay} to ${newRoleDisplay}`;
+      } else {
+        // Only permissions were changed
+        activityMessage = `Updated permissions for ${userFullName} (${newRoleDisplay})`;
+      }
+
+      // Log the activity
+      await logSystemActivity(activityMessage, userName, "Super Admin");
 
       setViewing(null);
       setEdit(null);
@@ -350,16 +398,16 @@ export default function UACSuper() {
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
                     />
-                   <div className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-gray-400">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="h-4 w-4"
-                  viewBox="0 0 24 24"
-                  fill="currentColor"
-                >
-                  <path d="M15.5 14h-.8l-.3-.3A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16a6.471 6.471 0 0 0 4.2-1.6l.3.3v.8l5 5 1.5-1.5-5-5Zm-6 0C7 14 5 12 5 9.5S7 5 9.5 5 14 7 14 9.5 12 14 9.5 14Z" />
-                </svg>
-              </div>
+                    <div className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-gray-400">
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="h-4 w-4"
+                        viewBox="0 0 24 24"
+                        fill="currentColor"
+                      >
+                        <path d="M15.5 14h-.8l-.3-.3A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16a6.471 6.471 0 0 0 4.2-1.6l.3.3v.8l5 5 1.5-1.5-5-5Zm-6 0C7 14 5 12 5 9.5S7 5 9.5 5 14 7 14 9.5 12 14 9.5 14Z" />
+                      </svg>
+                    </div>
                   </div>
                 </div>
               </div>

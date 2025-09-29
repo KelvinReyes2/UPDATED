@@ -91,9 +91,7 @@ export default function DashboardSuper() {
       const temp = [];
       snap.forEach((doc) => {
         const data = doc.data();
-        const role = data.role || "Unknown Role";
-        if (role.toLowerCase() === "super") return;
-
+        
         const logEntry = {
           id: doc.id,
           timestamp: data.timestamp || null,
@@ -103,13 +101,14 @@ export default function DashboardSuper() {
         };
         temp.push(logEntry);
       });
-      // Sort logs by timestamp (most recent first)
+      
+      // Sort logs by timestamp in descending order (most recent first)
       temp.sort((a, b) => {
-        if (!a.timestamp || !b.timestamp) return 0;
-        const aTime = a.timestamp.seconds || 0;
-        const bTime = b.timestamp.seconds || 0;
-        return bTime - aTime;
+        const timeA = a.timestamp?.seconds || a.timestamp?.getTime?.() || 0;
+        const timeB = b.timestamp?.seconds || b.timestamp?.getTime?.() || 0;
+        return timeB - timeA;
       });
+      
       setLogs(temp);
       setLogsLoading(false);
     });
@@ -131,12 +130,12 @@ export default function DashboardSuper() {
           };
           tempRequests.push(request);
         });
-        // Sort requests by timestamp (most recent first)
+        
+        // Sort requests by timestamp in descending order (most recent first)
         tempRequests.sort((a, b) => {
-          if (!a.requestedAt || !b.requestedAt) return 0;
-          const aTime = a.requestedAt.seconds || 0;
-          const bTime = b.requestedAt.seconds || 0;
-        return bTime - aTime;
+          const timeA = a.requestedAt?.seconds || a.requestedAt?.getTime?.() || 0;
+          const timeB = b.requestedAt?.seconds || b.requestedAt?.getTime?.() || 0;
+          return timeB - timeA;
         });
 
         setPasswordRequests(tempRequests);
@@ -262,7 +261,10 @@ export default function DashboardSuper() {
         minHeight: "60px",
         fontSize: "14px",
         color: "#6b7280",
-        padding: "0 16px",
+        padding: "8px 16px",
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
       },
       pageButtonsStyle: {
         backgroundColor: "transparent",
@@ -385,11 +387,11 @@ export default function DashboardSuper() {
         <div className="font-semibold text-gray-900 text-sm flex items-center">
           <div 
             className="w-8 h-8 rounded-full flex items-center justify-center mr-3"
-            style={{ backgroundColor: '#b4ffe2ff' }} // Orange-100 equivalent
+            style={{ backgroundColor: '#b4ffe2ff' }}
           >
             <span 
               className="font-semibold text-xs"
-              style={{ color: '#348b47ff' }} // Orange-600 equivalent
+              style={{ color: '#348b47ff' }}
             >
               {(row.user || "U").charAt(0).toUpperCase()}
             </span>
@@ -447,7 +449,7 @@ export default function DashboardSuper() {
           </p>
         </div>
 
-        {/* Enhanced Info Cards - Fixed styling */}
+        {/* Enhanced Info Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           {/* System Status Card */}
           <div className="bg-white rounded-lg shadow-md border border-gray-200 p-6">
@@ -539,12 +541,12 @@ export default function DashboardSuper() {
           </div>
         </div>
 
-        {/* Data Tables Section - Fixed container heights */}
+        {/* Data Tables Section */}
         <div className="grid grid-cols-1 2xl:grid-cols-2 gap-6">
           {/* Activity Log */}
-          <div className="bg-white rounded-lg shadow-md border border-gray-200 overflow-hidden" style={{ height: "500px" }}>
+          <div className="bg-white rounded-lg shadow-md border border-gray-200 overflow-hidden flex flex-col" style={{ height: "600px" }}>
             {/* Header */}
-            <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
+            <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex-shrink-0">
               <div className="flex justify-between items-center mb-4">
                 <div>
                   <h3 className="text-xl font-semibold text-gray-900">
@@ -600,7 +602,7 @@ export default function DashboardSuper() {
               </div>
             </div>
 
-            {/* Table Container with proper height */}
+            {/* Table Container */}
             <div className="flex-1 overflow-hidden">
               {logsLoading ? (
                 <div className="flex justify-center items-center h-full">
@@ -621,10 +623,10 @@ export default function DashboardSuper() {
                   customStyles={customStyles}
                   highlightOnHover
                   pagination
-                  paginationPerPage={6}
-                  paginationRowsPerPageOptions={[6, 10, 15]}
+                  paginationPerPage={5}
+                  paginationRowsPerPageOptions={[5, 10, 15]}
                   fixedHeader
-                  fixedHeaderScrollHeight="250px"
+                  fixedHeaderScrollHeight="350px"
                   noDataComponent={
                     <div className="py-12 text-center">
                       <div className="text-gray-400 text-lg mb-2">
@@ -641,9 +643,9 @@ export default function DashboardSuper() {
           </div>
 
           {/* Password Reset Requests */}
-          <div className="bg-white rounded-lg shadow-md border border-gray-200 overflow-hidden" style={{ height: "500px" }}>
+          <div className="bg-white rounded-lg shadow-md border border-gray-200 overflow-hidden flex flex-col" style={{ height: "600px" }}>
             {/* Header */}
-            <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
+            <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex-shrink-0">
               <div className="flex justify-between items-center">
                 <div>
                   <h3 className="text-xl font-semibold text-gray-900">
@@ -663,7 +665,7 @@ export default function DashboardSuper() {
               </div>
             </div>
 
-            {/* Table Container with proper height */}
+            {/* Table Container */}
             <div className="flex-1 overflow-hidden">
               {requestsLoading ? (
                 <div className="flex justify-center items-center h-full">
@@ -684,10 +686,10 @@ export default function DashboardSuper() {
                   customStyles={customStyles}
                   highlightOnHover
                   pagination
-                  paginationPerPage={8}
-                  paginationRowsPerPageOptions={[8, 12, 16]}
+                  paginationPerPage={6}
+                  paginationRowsPerPageOptions={[6, 10, 15]}
                   fixedHeader
-                  fixedHeaderScrollHeight="320px"
+                  fixedHeaderScrollHeight="420px"
                   noDataComponent={
                     <div className="py-12 text-center">
                       <div className="text-gray-400 text-lg mb-2">

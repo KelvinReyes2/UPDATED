@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { Fuel, Lock, AlertTriangle } from "lucide-react";
+import { Fuel, Lock, AlertTriangle, Loader2 } from "lucide-react";
 import {
   collection,
   getDocs,
@@ -28,7 +28,7 @@ const FuelLogsPage = () => {
   const [search, setSearch] = useState("");
   const [logs, setLogs] = useState([]);
   const [driversList, setDriversList] = useState([]);
-  const [unitData, setUnitData] = useState([]); // Add unitData state
+  const [unitData, setUnitData] = useState([]);
   const [isAddExpenseOpen, setIsAddExpenseOpen] = useState(false);
   const [isPriceModalOpen, setIsPriceModalOpen] = useState(false);
   const [newPriceInput, setNewPriceInput] = useState("");
@@ -50,6 +50,44 @@ const FuelLogsPage = () => {
   );
 
   const primaryColor = "#364C6E";
+
+  // Helper function to format timestamp with time and date
+  const formatTimestamp = (timestamp) => {
+    try {
+      let date;
+      if (timestamp && typeof timestamp.toDate === "function") {
+        date = timestamp.toDate();
+      } else if (timestamp && timestamp.seconds) {
+        date = new Date(timestamp.seconds * 1000);
+      } else if (timestamp instanceof Date) {
+        date = timestamp;
+      } else {
+        return { time: "N/A", date: "N/A", fullDateTime: "N/A" };
+      }
+
+      // Format time (e.g., 10:28 AM)
+      const time = date.toLocaleTimeString('en-US', { 
+        hour: '2-digit', 
+        minute: '2-digit',
+        hour12: true 
+      });
+
+      // Format date (e.g., September 17, 2025)
+      const dateStr = date.toLocaleDateString('en-US', { 
+        month: 'long', 
+        day: 'numeric', 
+        year: 'numeric' 
+      });
+
+      // Full date time for export
+      const fullDateTime = `${dateStr}, ${time}`;
+
+      return { time, date: dateStr, fullDateTime };
+    } catch (error) {
+      console.error("Error formatting timestamp:", error);
+      return { time: "Invalid", date: "Invalid", fullDateTime: "Invalid" };
+    }
+  };
 
   // Function to log system activities
   const logSystemActivity = async (activity, performedBy) => {
@@ -83,9 +121,9 @@ const FuelLogsPage = () => {
   useEffect(() => {
     const unsubUnitData = onSnapshot(collection(db, "unit"), (snap) => {
       const temp = snap.docs.map((d) => ({
-        id: d.id, // This is the unit document ID (like VAB12345)
+        id: d.id,
         unitHolder: d.data()?.unitHolder || null,
-        vehicleID: d.data()?.vehicleID || "", // This matches vehicle.vehicleID field
+        vehicleID: d.data()?.vehicleID || "",
         serialNo: d.data()?.serialNo || "",
         status: d.data()?.status || "Available",
       }));
@@ -115,7 +153,7 @@ const FuelLogsPage = () => {
                 officer: log.Officer || "N/A",
                 driverId: log.driverId || "N/A",
                 amount: parseFloat(log.fuelAmount) || 0,
-                vehicle: log.Vehicle || "N/A", // This will now contain the unit document ID
+                vehicle: log.Vehicle || "N/A",
                 timestamp: log.timestamp,
               };
             });
@@ -141,13 +179,12 @@ const FuelLogsPage = () => {
 
   // Updated function to fetch unit for driver
   const fetchUnitForDriver = async (driverId) => {
-    // Find the unit where the driver is the unitHolder and status is "Dispatched"
     const dispatchedUnit = unitData.find(
       (unit) => unit.unitHolder === driverId && unit.status === "Dispatched"
     );
     
     if (dispatchedUnit) {
-      return dispatchedUnit.id; // Return the unit document ID (e.g., VAB12345)
+      return dispatchedUnit.id;
     }
     return null;
   };
@@ -160,19 +197,17 @@ const FuelLogsPage = () => {
         const q = query(usersRef, where("role", "in", ["Driver", "Reliever"]));
         const snapshot = await getDocs(q);
 
-        const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
+        const today = new Date().toISOString().split("T")[0];
         const drivers = [];
 
         for (const docSnap of snapshot.docs) {
           const d = { uid: docSnap.id, ...docSnap.data() };
 
-          // ✅ Check if driver has a dispatched unit
           const unit = await fetchUnitForDriver(d.uid);
-          if (!unit) continue; // skip if no unit dispatched to this driver
+          if (!unit) continue;
 
           const fullName = `${d.firstName} ${d.lastName}`;
 
-          // ✅ Skip drivers who already have a fuel log today
           const hasLogToday = logs.some((l) => {
             const logDate = l.timestamp?.toDate
               ? l.timestamp.toDate().toISOString().split("T")[0]
@@ -190,16 +225,13 @@ const FuelLogsPage = () => {
           });
         }
 
-        // Sort alphabetically
         drivers.sort((a, b) => a.fullName.localeCompare(b.fullName));
-
         setDriversList(drivers);
       } catch (err) {
         console.error("Error fetching drivers:", err);
       }
     };
 
-    // Only fetch drivers after unitData is loaded
     if (unitData.length > 0) {
       fetchDrivers();
     }
@@ -277,7 +309,6 @@ const FuelLogsPage = () => {
         updatedBy: user.email,
       });
 
-      // Log the activity
       await logSystemActivity(
         `Updated fuel price to ₱${price.toFixed(2)}`,
         userName
@@ -320,7 +351,6 @@ const FuelLogsPage = () => {
     setForm({ ...form, [name]: value });
 
     if (name === "driver" && value) {
-      // find driver by UID or fullName
       const driver = driversList.find(
         (d) => d.uid === value || d.fullName === value
       );
@@ -349,7 +379,6 @@ const FuelLogsPage = () => {
         return;
       }
 
-      // Find selected driver from driversList
       const selectedDriver = driversList.find(
         (d) => d.uid === form.driver || d.fullName === form.driver
       );
@@ -358,29 +387,25 @@ const FuelLogsPage = () => {
         return;
       }
 
-      // Get dispatched unit for this driver
       const unit = await fetchUnitForDriver(selectedDriver.uid);
       if (!unit) {
         showError("No unit dispatched to this driver.");
         return;
       }
 
-      // Add a new fuel log
       await addDoc(collection(db, "fuelLogs"), {
         Driver: selectedDriver.fullName,
         driverId: selectedDriver.uid,
-        Officer: currentUser?.displayName || currentUser?.email,
-        Vehicle: unit, // Store the unit document ID
+        Officer: userName,
+        Vehicle: unit,
         fuelAmount: parseFloat(form.amount),
         status: "done",
         timestamp: serverTimestamp(),
       });
 
-      // Update driver's status in users collection
       const driverRef = doc(db, "users", selectedDriver.uid);
       await updateDoc(driverRef, { fuelStatus: "done" });
 
-      // Log the activity for adding fuel expense
       await logSystemActivity(
         `Added fuel expense: ₱${parseFloat(form.amount).toFixed(2)} for ${selectedDriver.fullName} (Unit: ${unit})`,
         userName
@@ -388,7 +413,7 @@ const FuelLogsPage = () => {
 
       showToast("Fuel expense saved successfully!");
       setIsAddExpenseOpen(false);
-      setForm({ driver: "", amount: "" }); // reset form
+      setForm({ driver: "", amount: "" });
     } catch (err) {
       console.error("Error saving fuel expense:", err);
       showError("Failed to save fuel expense.");
@@ -400,21 +425,24 @@ const FuelLogsPage = () => {
   // Export functions
   const headers = [
     "ID",
-    "Date",
+    "Timestamp",
     "Driver Name",
     "Officer",
     "Amount Spent",
     "Unit",
   ];
 
-  const rows = filteredLogs.map((log, index) => [
-    index + 1,
-    log.date,
-    log.driver,
-    log.officer,
-    `₱${log.amount.toFixed(2)}`,
-    log.vehicle, // This now contains the unit document ID
-  ]);
+  const rows = filteredLogs.map((log, index) => {
+    const { fullDateTime } = formatTimestamp(log.timestamp);
+    return [
+      index + 1,
+      fullDateTime,
+      log.driver,
+      log.officer,
+      `₱${log.amount.toFixed(2)}`,
+      log.vehicle,
+    ];
+  });
 
   const toggleDropdown = () => {
     setIsDropdownOpen((prev) => !prev);
@@ -430,7 +458,6 @@ const FuelLogsPage = () => {
         currentUser?.email || "Unknown"
       );
 
-      // Log the export activity
       await logSystemActivity("Exported Fuel Logs to CSV", userName);
 
       setIsDropdownOpen(false);
@@ -451,7 +478,6 @@ const FuelLogsPage = () => {
         currentUser?.email || "Unknown"
       );
 
-      // Log the export activity
       await logSystemActivity("Exported Fuel Logs to PDF", userName);
 
       setIsDropdownOpen(false);
@@ -472,10 +498,19 @@ const FuelLogsPage = () => {
       right: true,
     },
     {
-      name: "Date",
-      selector: (r) => r.date,
+      name: "Timestamp",
+      selector: (r) => r.timestamp,
       sortable: true,
       grow: 1,
+      cell: (r) => {
+        const { time, date } = formatTimestamp(r.timestamp);
+        return (
+          <div className="text-sm">
+            <div className="font-medium">{time}</div>
+            <div className="text-gray-600 text-xs">{date}</div>
+          </div>
+        );
+      },
     },
     {
       name: "Driver Name",
@@ -508,7 +543,7 @@ const FuelLogsPage = () => {
       cell: (r) => `₱${r.amount.toFixed(2)}`,
     },
     {
-      name: "Unit", // Changed from "Vehicle" to "Unit"
+      name: "Unit",
       selector: (r) => r.vehicle,
       sortable: true,
       center: true,
@@ -801,28 +836,6 @@ const FuelLogsPage = () => {
                   </div>
                   <div className="col-span-1">
                     <label className="block text-sm text-gray-600 mb-1">
-                      Officer
-                    </label>
-                    <input
-                      name="officer"
-                      value={currentUser?.displayName || currentUser?.email}
-                      disabled
-                      className="w-full border rounded-md px-3 py-2 bg-gray-100 cursor-not-allowed"
-                    />
-                  </div>
-                  <div className="col-span-1">
-                    <label className="block text-sm text-gray-600 mb-1">
-                      Date
-                    </label>
-                    <input
-                      name="date"
-                      value={new Date().toLocaleDateString()}
-                      disabled
-                      className="w-full border rounded-md px-3 py-2 bg-gray-100 cursor-not-allowed"
-                    />
-                  </div>
-                  <div className="col-span-1">
-                    <label className="block text-sm text-gray-600 mb-1">
                       Unit
                     </label>
                     <input
@@ -849,6 +862,7 @@ const FuelLogsPage = () => {
                     onClick={saveFuelExpense}
                     disabled={saving}
                   >
+                    {saving && <Loader2 className="h-4 w-4 animate-spin" />}
                     {saving ? "Saving..." : "Save"}
                   </button>
                 </div>
@@ -1004,7 +1018,9 @@ const FuelLogsPage = () => {
                       <h3 className="text-xl font-semibold text-gray-800">
                         Fuel Expense Details
                       </h3>
-                      <p className="text-sm text-gray-500">{viewing.date}</p>
+                      <p className="text-sm text-gray-500">
+                        {formatTimestamp(viewing.timestamp).fullDateTime}
+                      </p>
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
@@ -1059,10 +1075,10 @@ const FuelLogsPage = () => {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-600 mb-2">
-                      Date
+                      Timestamp
                     </label>
                     <p className="text-xl text-gray-800 font-semibold">
-                      {viewing.date}
+                      {formatTimestamp(viewing.timestamp).fullDateTime}
                     </p>
                   </div>
                 </div>
@@ -1196,3 +1212,4 @@ const FuelLogsPage = () => {
 };
 
 export default FuelLogsPage;
+                    

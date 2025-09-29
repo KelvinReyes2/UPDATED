@@ -9,12 +9,17 @@ import {
   doc,
   serverTimestamp,
   getDoc,
+  query,
+  where,
+  getDocs,
+  orderBy,
 } from "firebase/firestore";
 import {
   getAuth,
   reauthenticateWithCredential,
   EmailAuthProvider,
 } from "firebase/auth";
+import { exportToCSV, exportToPDF } from "../functions/exportFunctions";
 
 export default function DriverDispatch() {
   // ----- STATE -----
@@ -41,6 +46,13 @@ export default function DriverDispatch() {
   const [pendingUndispatch, setPendingUndispatch] = useState(null);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
 
+  // Export modal state
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportStartDate, setExportStartDate] = useState("");
+  const [exportEndDate, setExportEndDate] = useState("");
+  const [isExportingCSV, setIsExportingCSV] = useState(false);
+  const [isExportingPDF, setIsExportingPDF] = useState(false);
+
   const primaryColor = "#364C6E";
 
   // Get current user info for logging
@@ -52,6 +64,15 @@ export default function DriverDispatch() {
   // Role mapping for system logging
   const ROLE_MAPPING = {
     Admin: "System Admin",
+  };
+
+  // Helper function to get today's date in YYYY-MM-DD format
+  const getTodayDate = () => {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, "0");
+    const day = String(today.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
   };
 
   // Function to map user roles to display roles for logging
@@ -165,9 +186,9 @@ export default function DriverDispatch() {
 
     const unsubUnitData = onSnapshot(collection(db, "unit"), (snap) => {
       const temp = snap.docs.map((d) => ({
-        id: d.id, // This is the unit document ID (like VAB12345)
+        id: d.id,
         unitHolder: d.data()?.unitHolder || null,
-        vehicleID: d.data()?.vehicleID || "", // This matches vehicle.vehicleID field
+        vehicleID: d.data()?.vehicleID || "",
         serialNo: d.data()?.serialNo || "",
         status: d.data()?.status || "Available",
       }));
@@ -213,7 +234,6 @@ export default function DriverDispatch() {
 
       particular = latestLog?.Particular || "Not yet selected";
 
-      // Check if driver has a dispatched unit
       const dispatchedUnit = unitData.find(
         (u) => u.unitHolder === driver.id && u.status === "Dispatched"
       );
@@ -221,10 +241,9 @@ export default function DriverDispatch() {
       if (dispatchedUnit) {
         isDispatched = true;
         status = "Dispatched";
-        unit = dispatchedUnit.id; // Unit document ID (e.g., VAB12345)
+        unit = dispatchedUnit.id;
         serialNo = dispatchedUnit.serialNo || "N/A";
         
-        // Find the vehicle that matches the unit's vehicleID
         const dispatchedVehicle = vehicles.find(
           (v) => v.vehicleID === dispatchedUnit.vehicleID
         );
@@ -235,7 +254,6 @@ export default function DriverDispatch() {
           if (dispatchedRoute) routeName = dispatchedRoute.route;
         }
       } else if (selections.vehicleID) {
-        // Driver has selected a vehicle but not yet dispatched
         const selectedVehicle = vehicles.find(
           (v) => v.vehicleID === selections.vehicleID
         );
@@ -243,13 +261,12 @@ export default function DriverDispatch() {
           vehicleID = selectedVehicle.vehicleID;
           routeId = selectedVehicle.routeId;
           
-          // Find available unit that matches this vehicle's vehicleID
           const availableUnit = unitData.find(
             (u) => u.vehicleID === selectedVehicle.vehicleID && u.status === "Available"
           );
           
           if (availableUnit) {
-            unit = availableUnit.id; // Unit document ID
+            unit = availableUnit.id;
             serialNo = availableUnit.serialNo || "N/A";
           }
           
@@ -343,7 +360,6 @@ export default function DriverDispatch() {
 
     if (column === "vehicleID") {
       if (!value) {
-        // User selected "Select Vehicle" → remove the selection for this driver
         setDriverSelections((prev) => {
           const newSel = { ...prev };
           delete newSel[row.driverId];
@@ -352,11 +368,9 @@ export default function DriverDispatch() {
         return;
       }
 
-      // Find the selected vehicle by vehicleID
       const selectedVehicle = vehicles.find((v) => v.vehicleID === value);
       if (!selectedVehicle) return;
 
-      // Find available unit that matches this vehicle's vehicleID
       const availableUnit = unitData.find(
         (u) => u.vehicleID === selectedVehicle.vehicleID && u.status === "Available"
       );
@@ -398,18 +412,25 @@ export default function DriverDispatch() {
       );
       if (!selectedVehicle) return alert("Selected vehicle not found.");
 
-      // Find an available unit that matches the vehicle's vehicleID
       const availableUnit = unitData.find(
         (u) => u.vehicleID === selectedVehicle.vehicleID && u.status === "Available"
       );
       if (!availableUnit)
         return alert("No available unit found for this vehicle.");
 
-      // Update the unit to be dispatched with the driver as unitHolder
+      // Update the unit to be dispatched
       const unitRef = doc(db, "unit", availableUnit.id);
       await updateDoc(unitRef, {
         unitHolder: row.driverId,
         status: "Dispatched",
+      });
+
+      // Add entry to unitLogs collection
+      await addDoc(collection(db, "unitLogs"), {
+        unitHolder: row.driverId,
+        driverName: row.driverName,
+        unit: availableUnit.id,
+        assignedAt: serverTimestamp(),
       });
 
       // Update local state
@@ -531,6 +552,173 @@ export default function DriverDispatch() {
     }
   };
 
+  // Export functions
+  const openExportModal = () => {
+    setExportStartDate(getTodayDate());
+    setExportEndDate("");
+    setShowExportModal(true);
+  };
+
+  const closeExportModal = () => {
+    setShowExportModal(false);
+    setExportStartDate("");
+    setExportEndDate("");
+  };
+
+  const fetchUnitLogsForExport = async () => {
+    try {
+      let q;
+      
+      if (exportStartDate && exportEndDate) {
+        // Date range: start date to end date
+        const startDate = new Date(exportStartDate);
+        startDate.setHours(0, 0, 0, 0);
+        
+        const endDate = new Date(exportEndDate);
+        endDate.setHours(23, 59, 59, 999);
+        
+        q = query(
+          collection(db, "unitLogs"),
+          where("assignedAt", ">=", startDate),
+          where("assignedAt", "<=", endDate),
+          orderBy("assignedAt", "desc")
+        );
+      } else if (exportStartDate && !exportEndDate) {
+        // Single day: only the start date
+        const startDate = new Date(exportStartDate);
+        startDate.setHours(0, 0, 0, 0);
+        
+        const endDate = new Date(exportStartDate);
+        endDate.setHours(23, 59, 59, 999);
+        
+        q = query(
+          collection(db, "unitLogs"),
+          where("assignedAt", ">=", startDate),
+          where("assignedAt", "<=", endDate),
+          orderBy("assignedAt", "desc")
+        );
+      } else {
+        // No dates selected: all logs
+        q = query(collection(db, "unitLogs"), orderBy("assignedAt", "desc"));
+      }
+
+      const snapshot = await getDocs(q);
+      const logs = [];
+
+      for (const docSnap of snapshot.docs) {
+        const data = docSnap.data();
+        
+        // Fetch full driver name if not already in the log
+        let driverFullName = data.driverName || "N/A";
+        if (data.unitHolder && !data.driverName) {
+          try {
+            const userDoc = await getDoc(doc(db, "users", data.unitHolder));
+            if (userDoc.exists()) {
+              const userData = userDoc.data();
+              driverFullName = `${userData.firstName || ""} ${userData.middleName || ""} ${userData.lastName || ""}`.trim();
+            }
+          } catch (err) {
+            console.error("Error fetching driver name:", err);
+          }
+        }
+
+        logs.push({
+          driverName: driverFullName,
+          unit: data.unit || "N/A",
+          assignedAt: data.assignedAt?.toDate
+            ? data.assignedAt.toDate()
+            : new Date(),
+        });
+      }
+
+      return logs;
+    } catch (error) {
+      console.error("Error fetching unit logs:", error);
+      return [];
+    }
+  };
+
+  const handleExportCSV = async () => {
+    setIsExportingCSV(true);
+    try {
+      const logs = await fetchUnitLogsForExport();
+      
+      const headers = ["Driver Name", "Unit", "Date"];
+      const rows = logs.map((log) => [
+        log.driverName,
+        log.unit,
+        new Date(log.assignedAt).toLocaleString(),
+      ]);
+
+      exportToCSV(
+        headers,
+        rows,
+        "Unit-History-Report",
+        "Unit-History-Report.csv",
+        userName
+      );
+
+      await logSystemActivity("Exported Unit History Report to CSV", userName);
+
+      setToastMessage("Unit history exported to CSV successfully!");
+      setShowSuccessToast(true);
+      setTimeout(() => setShowSuccessToast(false), 3000);
+      
+      closeExportModal();
+    } catch (error) {
+      console.error("Error exporting to CSV:", error);
+      alert("Error exporting to CSV: " + error.message);
+    } finally {
+      setIsExportingCSV(false);
+    }
+  };
+
+  const handleExportPDF = async () => {
+    setIsExportingPDF(true);
+    try {
+      const logs = await fetchUnitLogsForExport();
+      
+      const headers = ["Driver Name", "Unit", "Date"];
+      const rows = logs.map((log) => [
+        log.driverName,
+        log.unit,
+        new Date(log.assignedAt).toLocaleString(),
+      ]);
+
+      exportToPDF(
+        headers,
+        rows,
+        "Unit-History-Report",
+        "Unit-History-Report.pdf",
+        userName
+      );
+
+      await logSystemActivity("Exported Unit History Report to PDF", userName);
+
+      setToastMessage("Unit history exported to PDF successfully!");
+      setShowSuccessToast(true);
+      setTimeout(() => setShowSuccessToast(false), 3000);
+      
+      closeExportModal();
+    } catch (error) {
+      console.error("Error exporting to PDF:", error);
+      alert("Error exporting to PDF: " + error.message);
+    } finally {
+      setIsExportingPDF(false);
+    }
+  };
+
+  // Helper function to get dynamic export description
+  const getExportDescription = () => {
+    if (exportStartDate && exportEndDate) {
+      return `The report will include all unit assignments from ${new Date(exportStartDate).toLocaleDateString()} to ${new Date(exportEndDate).toLocaleDateString()}.`;
+    } else if (exportStartDate && !exportEndDate) {
+      return `The report will include all unit assignments for ${new Date(exportStartDate).toLocaleDateString()} only.`;
+    } else {
+      return "The report will include all unit assignments from all dates.";
+    }
+  };
+
   // ----- DATA TABLE COLUMNS -----
   const columns = [
     {
@@ -555,8 +743,11 @@ export default function DriverDispatch() {
             </div>
           );
         
-        // Get vehicles that have available units
         const availableVehicles = vehicles.filter((vehicle) => {
+          if (vehicle.status === "Inactive") {
+            return false;
+          }
+          
           return unitData.some(
             (unit) => 
               unit.vehicleID === vehicle.vehicleID && 
@@ -785,6 +976,15 @@ export default function DriverDispatch() {
                   <option value="Driver">Driver</option>
                   <option value="Reliever">Reliever</option>
                 </select>
+                
+                {/* Export Button */}
+                <button
+                  onClick={openExportModal}
+                  className="flex items-center gap-2 px-6 py-2 rounded-lg text-white shadow-md hover:shadow-lg transition"
+                  style={{ backgroundColor: primaryColor }}
+                >
+                  <span className="font-semibold">Export</span>
+                </button>
               </div>
             </div>
             <div className="px-6 py-4 flex-1">
@@ -812,6 +1012,160 @@ export default function DriverDispatch() {
           </div>
         </div>
       </main>
+
+      {/* Export Modal */}
+      {showExportModal && (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-black/40 backdrop-blur-sm p-4"
+          onClick={closeExportModal}
+        >
+          <div
+            className="relative bg-white rounded-2xl shadow-2xl w-[520px] max-w-[90%] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="relative flex items-center justify-between px-6 py-4 border-b bg-white/70 backdrop-blur">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-full grid place-items-center text-blue-600 shadow-sm bg-blue-50 border border-blue-200">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="h-5 w-5"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="7 10 12 15 17 10" />
+                    <line x1="12" y1="15" x2="12" y2="3" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-800">
+                    Unit History | Export
+                  </h3>
+                  <p className="text-sm text-gray-500">
+                    Select date range and export format
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={closeExportModal}
+                className="h-8 w-8 rounded-full grid place-items-center border border-gray-200 hover:bg-gray-50"
+                title="Close"
+              >
+                <svg
+                  className="h-4.5 w-4.5"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                >
+                  <path d="M6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12 19 6.4 17.6 5 12 10.6 6.4 5z" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Start Date
+                  </label>
+                  <input
+                    type="date"
+                    value={exportStartDate}
+                    onChange={(e) => setExportStartDate(e.target.value)}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    End Date <span className="text-gray-400 font-normal">(Optional)</span>
+                  </label>
+                  <input
+                    type="date"
+                    value={exportEndDate}
+                    onChange={(e) => setExportEndDate(e.target.value)}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+              </div>
+
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <p className="text-sm text-blue-800">
+                  <span className="font-semibold">Note:</span> {getExportDescription()}
+                </p>
+              </div>
+            </div>
+
+            <div className="px-6 py-4 border-t bg-white/70 backdrop-blur flex justify-end gap-3">
+              <button
+                onClick={closeExportModal}
+                className="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700"
+                disabled={isExportingCSV || isExportingPDF}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleExportCSV}
+                className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white disabled:opacity-60 inline-flex items-center gap-2"
+                disabled={isExportingCSV || isExportingPDF || !exportStartDate}
+              >
+                {isExportingCSV && (
+                  <svg
+                    className="h-4 w-4 animate-spin"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    />
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8v4A4 4 0 004 12z"
+                    />
+                  </svg>
+                )}
+                {isExportingCSV ? "Exporting..." : "Export to Excel"}
+              </button>
+              <button
+                onClick={handleExportPDF}
+                className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white disabled:opacity-60 inline-flex items-center gap-2"
+                disabled={isExportingCSV || isExportingPDF || !exportStartDate}
+              >
+                {isExportingPDF && (
+                  <svg
+                    className="h-4 w-4 animate-spin"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    />
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8v4A4 4 0 004 12z"
+                    />
+                  </svg>
+                )}
+                {isExportingPDF ? "Exporting..." : "Export to PDF"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Password Confirmation Modal */}
       {showPasswordModal && (

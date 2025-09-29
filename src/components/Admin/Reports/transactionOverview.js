@@ -69,6 +69,38 @@ const getDateFromTimestamp = (timestamp) => {
   }
 };
 
+// Helper function to format timestamp with time and date
+const formatTimestamp = (timestamp) => {
+  try {
+    const date = getDateFromTimestamp(timestamp);
+    if (!date) {
+      return { time: "N/A", date: "N/A", fullDateTime: "N/A" };
+    }
+
+    // Format time (e.g., 10:28 AM)
+    const time = date.toLocaleTimeString('en-US', { 
+      hour: '2-digit', 
+      minute: '2-digit',
+      hour12: true 
+    });
+
+    // Format date (e.g., September 17, 2025)
+    const dateStr = date.toLocaleDateString('en-US', { 
+      month: 'long', 
+      day: 'numeric', 
+      year: 'numeric' 
+    });
+
+    // Full date time for export
+    const fullDateTime = `${dateStr}, ${time}`;
+
+    return { time, date: dateStr, fullDateTime };
+  } catch (error) {
+    console.error("Error formatting timestamp:", error);
+    return { time: "Invalid", date: "Invalid", fullDateTime: "Invalid" };
+  }
+};
+
 const TransactionOverview = () => {
   const [transactions, setTransactions] = useState([]);
   const [filteredTransactions, setFilteredTransactions] = useState([]);
@@ -376,11 +408,12 @@ const TransactionOverview = () => {
     "Total Price",
     "Route",
     "Status",
-    "Date Created"
+    "Timestamp"
   ];
 
   const rows = filteredTransactions.map((transaction) => {
     const unitDocId = getUnitDocId(transaction.driverUID);
+    const { fullDateTime } = formatTimestamp(transaction.timestamp);
     return [
       transaction.id,
       transaction.invoiceNum,
@@ -390,7 +423,7 @@ const TransactionOverview = () => {
       `₱${transaction.farePrice}`,
       transaction.route,
       transaction.isVoided ? "Voided" : "Successful",
-      new Date(transaction.timestamp).toLocaleDateString()
+      fullDateTime
     ];
   });
 
@@ -830,13 +863,15 @@ const TransactionOverview = () => {
                   Status
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Date Created
+                  Timestamp
                 </th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {currentTransactions.map((transaction) => {
                 const unitDocId = getUnitDocId(transaction.driverUID);
+                const { time, date } = formatTimestamp
+                (transaction.timestamp);
                 return (
                   <tr key={transaction.id}>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
@@ -880,7 +915,10 @@ const TransactionOverview = () => {
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {new Date(transaction.timestamp).toLocaleDateString()}
+                      <div className="text-sm">
+                        <div>{time}</div>
+                        <div className="text-gray-600">{date}</div>
+                      </div>
                     </td>
                   </tr>
                 );

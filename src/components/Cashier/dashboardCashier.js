@@ -54,7 +54,7 @@ const CashierDashboardAnalytics = () => {
   const [logs, setLogs] = useState([]);
   const [filteredLogs, setFilteredLogs] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [startDate, setStartDate] = useState(getTodayDate()); // Default to today
+  const [startDate, setStartDate] = useState(getTodayDate());
   const [endDate, setEndDate] = useState("");
   const [stats, setStats] = useState({
     driversRelievers: 0,
@@ -89,6 +89,38 @@ const CashierDashboardAnalytics = () => {
     } catch (error) {
       console.error("Error converting timestamp:", error);
       return null;
+    }
+  };
+
+  // Helper function to format timestamp with time and date
+  const formatTimestamp = (timestamp) => {
+    try {
+      const date = getDateFromTimestamp(timestamp);
+      if (!date) {
+        return { time: "N/A", date: "N/A", fullDateTime: "N/A" };
+      }
+
+      // Format time (e.g., 10:28 AM)
+      const time = date.toLocaleTimeString('en-US', { 
+        hour: '2-digit', 
+        minute: '2-digit',
+        hour12: true 
+      });
+
+      // Format date (e.g., September 17, 2025)
+      const dateStr = date.toLocaleDateString('en-US', { 
+        month: 'long', 
+        day: 'numeric', 
+        year: 'numeric' 
+      });
+
+      // Full date time for export
+      const fullDateTime = `${dateStr}, ${time}`;
+
+      return { time, date: dateStr, fullDateTime };
+    } catch (error) {
+      console.error("Error formatting timestamp:", error);
+      return { time: "Invalid", date: "Invalid", fullDateTime: "Invalid" };
     }
   };
 
@@ -129,7 +161,7 @@ const CashierDashboardAnalytics = () => {
           driver: log.Driver || "N/A",
           officer: log.Officer || "N/A",
           amount: parseFloat(log.fuelAmount) || 0,
-          unit: log.Vehicle || "N/A", // Changed from 'vehicle' to 'unit' to match the data structure
+          unit: log.Vehicle || "N/A",
           status: log.status || "pending",
           timestamp: log.timestamp?.toDate
             ? log.timestamp.toDate()
@@ -145,7 +177,7 @@ const CashierDashboardAnalytics = () => {
       // Fetch latest fuel price
       const priceRef = collection(db, "fuelPrice");
       const priceSnapshot = await getDocs(
-        query(priceRef, orderBy("timestamp", "desc") /* limit(1) */)
+        query(priceRef, orderBy("timestamp", "desc"))
       );
       const priceHistory = priceSnapshot.docs.map((doc) => {
         const d = doc.data();
@@ -169,7 +201,7 @@ const CashierDashboardAnalytics = () => {
     }
   }, [startDate, endDate]);
 
-  // Filter logs by date using ActivityLog's improved logic
+  // Filter logs by date
   const filterLogsByDate = (logsToFilter, filterStartDate, filterEndDate) => {
     if (!filterStartDate && !filterEndDate) {
       setFilteredLogs(logsToFilter);
@@ -179,24 +211,18 @@ const CashierDashboardAnalytics = () => {
     const filtered = logsToFilter.filter((log) => {
       const logDate = getDateFromTimestamp(log.timestamp);
       if (logDate) {
-        // Convert log date to local date string in YYYY-MM-DD format
         const year = logDate.getFullYear();
         const month = String(logDate.getMonth() + 1).padStart(2, "0");
         const day = String(logDate.getDate()).padStart(2, "0");
         const logDateString = `${year}-${month}-${day}`;
 
-        // If only start date is provided, show logs from that specific date only
         if (filterStartDate && !filterEndDate) {
           return logDateString === filterStartDate;
-        }
-        // If both dates are provided, show logs in the range
-        else if (filterStartDate && filterEndDate) {
+        } else if (filterStartDate && filterEndDate) {
           return (
             logDateString >= filterStartDate && logDateString <= filterEndDate
           );
-        }
-        // If only end date is provided
-        else if (!filterStartDate && filterEndDate) {
+        } else if (!filterStartDate && filterEndDate) {
           return logDateString <= filterEndDate;
         }
       }
@@ -204,7 +230,7 @@ const CashierDashboardAnalytics = () => {
     });
 
     setFilteredLogs(filtered);
-    setCurrentPage(1); // Reset to first page when filtering
+    setCurrentPage(1);
   };
 
   useEffect(() => {
@@ -219,7 +245,6 @@ const CashierDashboardAnalytics = () => {
       return;
     }
 
-    // Build Consumption (per Driver)
     const consumptionByDriver = {};
     filteredLogs.forEach((log) => {
       if (log.driver) {
@@ -262,7 +287,6 @@ const CashierDashboardAnalytics = () => {
     fetchFuelLog();
   }, [fetchFuelLog]);
 
-  // Filter logs when dates change
   useEffect(() => {
     filterLogsByDate(logs, startDate, endDate);
   }, [startDate, endDate, logs]);
@@ -276,12 +300,11 @@ const CashierDashboardAnalytics = () => {
       const allPrices = priceSnapshot.docs.map((doc) => {
         const d = doc.data();
         return {
-          date: d.timestamp?.toDate().toISOString().split("T")[0], // YYYY-MM-DD
+          date: d.timestamp?.toDate().toISOString().split("T")[0],
           price: parseFloat(d.Price || 0),
         };
       });
 
-      // Apply date filtering
       const filteredPrices = allPrices.filter((p) => {
         if (startDate && endDate)
           return p.date >= startDate && p.date <= endDate;
@@ -296,7 +319,6 @@ const CashierDashboardAnalytics = () => {
     fetchPriceData();
   }, [startDate, endDate]);
 
-  // Pagination
   const currentLogs = filteredLogs.slice(
     (currentPage - 1) * logsPerPage,
     currentPage * logsPerPage
@@ -312,7 +334,7 @@ const CashierDashboardAnalytics = () => {
   };
 
   const handleResetDates = () => {
-    setStartDate("");
+    setStartDate(getTodayDate());
     setEndDate("");
     setFilteredLogs(logs);
     setCurrentPage(1);
@@ -499,7 +521,7 @@ const CashierDashboardAnalytics = () => {
           <table className="w-full text-left border border-gray-200 rounded-lg">
             <thead className="bg-gray-50">
               <tr>
-                {["Date", "Driver", "Officer", "Fuel Amount", "Unit"].map(
+                {["Timestamp", "Driver", "Officer", "Fuel Amount", "Unit"].map(
                   (header) => (
                     <th
                       key={header}
@@ -512,17 +534,25 @@ const CashierDashboardAnalytics = () => {
               </tr>
             </thead>
             <tbody>
-              {currentLogs.map((log) => (
-                <tr key={log.id} className="border-t hover:bg-gray-50">
-                  <td className="px-6 py-3 text-sm">{log.date}</td>
-                  <td className="px-6 py-3 text-sm">{log.driver}</td>
-                  <td className="px-6 py-3 text-sm">{log.officer}</td>
-                  <td className="px-6 py-3 text-sm font-medium">
-                    ₱{log.amount.toFixed(2)}
-                  </td>
-                  <td className="px-6 py-3 text-sm">{log.unit}</td>
-                </tr>
-              ))}
+              {currentLogs.map((log) => {
+                const { time, date } = formatTimestamp(log.timestamp);
+                return (
+                  <tr key={log.id} className="border-t hover:bg-gray-50">
+                    <td className="px-6 py-3 text-sm">
+                      <div className="text-sm">
+                        <div>{time}</div>
+                        <div className="text-gray-600">{date}</div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-3 text-sm">{log.driver}</td>
+                    <td className="px-6 py-3 text-sm">{log.officer}</td>
+                    <td className="px-6 py-3 text-sm font-medium">
+                      ₱{log.amount.toFixed(2)}
+                    </td>
+                    <td className="px-6 py-3 text-sm">{log.unit}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

@@ -117,9 +117,6 @@ export default function ActivityLogSuper() {
           const data = doc.data();
           const role = data.role || "Unknown Role";
 
-          // Exclude 'super' role logs from being displayed
-          if (role.toLowerCase() === "super") return;
-
           const logEntry = {
             id: doc.id,
             timestamp: data.timestamp || null,
@@ -128,6 +125,13 @@ export default function ActivityLogSuper() {
             role: data.role || "Unknown Role", // Added role
           };
           temp.push(logEntry);
+        });
+
+        // Sort by timestamp in descending order (most recent first)
+        temp.sort((a, b) => {
+          const timeA = a.timestamp?.seconds || a.timestamp?.getTime?.() || 0;
+          const timeB = b.timestamp?.seconds || b.timestamp?.getTime?.() || 0;
+          return timeB - timeA;
         });
 
         setLogs(temp);
@@ -512,7 +516,7 @@ export default function ActivityLogSuper() {
               >
                 Close
               </button>
-              </div>
+            </div>
           </div>
         </div>
       )}

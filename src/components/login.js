@@ -152,12 +152,17 @@ function Login() {
           return;
         }
 
-        let displayRole =
-          role === "admin"
-            ? "System Admin"
-            : role === "cashier"
-              ? "Cashier"
-              : role;
+        // Map role to display role for logging
+        let displayRole;
+        if (role === "super") {
+          displayRole = "Super Admin";
+        } else if (role === "admin") {
+          displayRole = "System Admin";
+        } else if (role === "cashier") {
+          displayRole = "Cashier";
+        } else {
+          displayRole = role;
+        }
 
         // Log login activity
         await addDoc(collection(db, "systemLogs"), {

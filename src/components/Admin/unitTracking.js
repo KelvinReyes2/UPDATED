@@ -477,9 +477,9 @@ export default function UnitTracking() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex">
       {/* Sidebar */}
-      <div className="w-80 bg-white shadow-2xl flex flex-col border-r border-gray-200">
-        {/* Header */}
-        <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-blue-500 to-indigo-500">
+      <div className="w-80 bg-white shadow-2xl flex flex-col border-r border-gray-200 max-h-screen">
+        {/* Fixed Header */}
+        <div className="flex-shrink-0 p-6 border-b border-gray-200 bg-gradient-to-r from-blue-500 to-indigo-500">
           <h1 className="text-2xl font-bold text-white mb-4">Unit Tracking</h1>
           <div className="text-blue-100 text-sm mb-4">Today's Active Units</div>
 
@@ -514,21 +514,22 @@ export default function UnitTracking() {
           </div>
         </div>
 
-        {/* Units List */}
-        <div className="flex-1 overflow-y-auto">
-          <div className="p-4 bg-gradient-to-r from-gray-50 to-blue-50">
-            <p className="text-xs text-gray-600 uppercase font-semibold mb-1">
-              {filteredUnits.length} Unit{filteredUnits.length !== 1 ? "s" : ""}{" "}
-              Available Today
-            </p>
-            <div className="w-full h-1 bg-blue-200 rounded-full">
-              <div
-                className="h-1 bg-blue-500 rounded-full transition-all duration-300"
-                style={{ width: filteredUnits.length > 0 ? "100%" : "0%" }}
-              ></div>
-            </div>
+        {/* Fixed Status Bar */}
+        <div className="flex-shrink-0 p-4 bg-gradient-to-r from-gray-50 to-blue-50 border-b border-gray-200">
+          <p className="text-xs text-gray-600 uppercase font-semibold mb-1">
+            {filteredUnits.length} Unit{filteredUnits.length !== 1 ? "s" : ""}{" "}
+            Available Today
+          </p>
+          <div className="w-full h-1 bg-blue-200 rounded-full">
+            <div
+              className="h-1 bg-blue-500 rounded-full transition-all duration-300"
+              style={{ width: filteredUnits.length > 0 ? "100%" : "0%" }}
+            ></div>
           </div>
+        </div>
 
+        {/* Scrollable Units List */}
+        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-track-gray-100 scrollbar-thumb-gray-300 hover:scrollbar-thumb-gray-400">
           <div className="p-2">
             {filteredUnits.map((unit) => {
               const driverName = unit.unitHolder

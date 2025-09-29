@@ -36,6 +36,66 @@ const getTodayDate = () => {
   return `${year}-${month}-${day}`;
 };
 
+// Helper function to convert timestamp to Date object
+const getDateFromTimestamp = (timestamp) => {
+  try {
+    // Handle Firestore Timestamp
+    if (timestamp && typeof timestamp.toDate === "function") {
+      return timestamp.toDate();
+    }
+    // Handle timestamp object with seconds property (Firestore)
+    else if (timestamp && timestamp.seconds) {
+      return new Date(timestamp.seconds * 1000);
+    }
+    // Handle JavaScript Date
+    else if (timestamp instanceof Date) {
+      return timestamp;
+    } else if (
+      typeof timestamp === "string" &&
+      !isNaN(Date.parse(timestamp))
+    ) {
+      return new Date(timestamp);
+    } else {
+      return null;
+    }
+  } catch (error) {
+    console.error("Error converting timestamp:", error);
+    return null;
+  }
+};
+
+// Helper function to format timestamp with time and date
+const formatTimestamp = (timestamp) => {
+  try {
+    const date = getDateFromTimestamp(timestamp);
+    if (!date) {
+      return { time: "N/A", date: "N/A", fullDateTime: "N/A" };
+    }
+
+    // Format time (e.g., 10:28 AM)
+    const time = date.toLocaleTimeString('en-US', { 
+      hour: '2-digit', 
+      minute: '2-digit',
+      hour12: true 
+    });
+
+    // Format date (e.g., September 17, 2025)
+    const dateStr = date.toLocaleDateString('en-US', { 
+      month: 'long', 
+      day: 'numeric', 
+      year: 'numeric' 
+    });
+
+    // Full date time for export
+    const fullDateTime = `${dateStr}, ${time}`;
+
+    return { time, date: dateStr, fullDateTime };
+  } catch (error) {
+    console.error("Error formatting timestamp:", error);
+    return { time: "Invalid", date: "Invalid", fullDateTime: "Invalid" };
+  }
+};
+
 const QuotaSummary = () => {
   const [quotaData, setQuotaData] = useState([]);
   const [filteredData, setFilteredData] = useState([]);
@@ -64,34 +124,6 @@ const QuotaSummary = () => {
   const secondaryColor = "#405a88";
 
   const toggleDropdown = () => setIsDropdownOpen(!isDropdownOpen);
-
-  // Helper function to convert timestamp to Date object
-  const getDateFromTimestamp = (timestamp) => {
-    try {
-      // Handle Firestore Timestamp
-      if (timestamp && typeof timestamp.toDate === "function") {
-        return timestamp.toDate();
-      }
-      // Handle timestamp object with seconds property (Firestore)
-      else if (timestamp && timestamp.seconds) {
-        return new Date(timestamp.seconds * 1000);
-      }
-      // Handle JavaScript Date
-      else if (timestamp instanceof Date) {
-        return timestamp;
-      } else if (
-        typeof timestamp === "string" &&
-        !isNaN(Date.parse(timestamp))
-      ) {
-        return new Date(timestamp);
-      } else {
-        return null;
-      }
-    } catch (error) {
-      console.error("Error converting timestamp:", error);
-      return null;
-    }
-  };
 
   // Function to fetch user role
   const fetchUserRole = useCallback(async () => {
@@ -368,13 +400,16 @@ const QuotaSummary = () => {
     "Status",
     "Updated At",
   ];
-  const rows = filteredData.map((d) => [
-    d.driverName,
-    `₱${d.target.toFixed(2)}`,
-    `₱${d.currentTotal.toFixed(2)}`,
-    d.isMet ? "Met" : "Not Met",
-    new Date(d.updatedAt).toLocaleString(),
-  ]);
+  const rows = filteredData.map((d) => {
+    const { fullDateTime } = formatTimestamp(d.updatedAt);
+    return [
+      d.driverName,
+      `₱${d.target.toFixed(2)}`,
+      `₱${d.currentTotal.toFixed(2)}`,
+      d.isMet ? "Met" : "Not Met",
+      fullDateTime,
+    ];
+  });
 
   if (loading) {
     return (
@@ -676,33 +711,39 @@ const QuotaSummary = () => {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {filteredData.map((log) => (
-                  <tr key={log.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 text-sm text-gray-900">
-                      {log.driverName}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-900">
-                      ₱{log.target.toFixed(2)}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-900">
-                      ₱{log.currentTotal.toFixed(2)}
-                    </td>
-                    <td className="px-6 py-4 text-sm">
-                      <span
-                        className={`inline-flex items-center px-2 py-1 text-xs font-medium rounded-full ${
-                          log.isMet
-                            ? "bg-green-100 text-green-800"
-                            : "bg-red-100 text-red-800"
-                        }`}
-                      >
-                        {log.isMet ? "Met" : "Not Met"}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-500">
-                      {new Date(log.updatedAt).toLocaleString()}
-                    </td>
-                  </tr>
-                ))}
+                {filteredData.map((log) => {
+                  const { time, date } = formatTimestamp(log.updatedAt);
+                  return (
+                    <tr key={log.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {log.driverName}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        ₱{log.target.toFixed(2)}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        ₱{log.currentTotal.toFixed(2)}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        <span
+                          className={`inline-flex items-center px-2 py-1 text-xs font-medium rounded-full ${
+                            log.isMet
+                              ? "bg-green-100 text-green-800"
+                              : "bg-red-100 text-red-800"
+                          }`}
+                        >
+                          {log.isMet ? "Met" : "Not Met"}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        <div className="text-sm">
+                          <div>{time}</div>
+                          <div className="text-gray-600">{date}</div>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
                 {filteredData.length === 0 && (
                   <tr>
                     <td
