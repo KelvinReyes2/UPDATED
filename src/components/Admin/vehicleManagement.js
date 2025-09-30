@@ -624,6 +624,7 @@ export default function VehicleManagement() {
     if (!form.vehicleID.trim())
       validationErrors.vehicleID = "Vehicle ID is required";
     if (!form.unit) validationErrors.unit = "Unit is required";
+    if (!form.routeId) validationErrors.routeId = "Route is required";
 
     setErrors(validationErrors);
     if (Object.keys(validationErrors).length) return;

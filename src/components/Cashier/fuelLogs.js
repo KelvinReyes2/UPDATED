@@ -818,16 +818,18 @@ const FuelLogsPage = () => {
                 </div>
 
                 {/* Form */}
-                <div className="p-12 grid grid-cols-3 gap-x-5 gap-y-4">
-                  <div className="col-span-3">
-                    <label className="block text-sm text-gray-600 mb-1">
+               {/* Form */}
+                <div className="p-8 space-y-6">
+                  {/* Driver Field */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
                       Driver <span className="text-red-500">*</span>
                     </label>
                     <select
                       name="driver"
                       value={form.driver}
                       onChange={onFormChange}
-                      className="w-full border rounded-md px-3 py-2 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300"
+                      className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition shadow-sm"
                     >
                       <option value="">Select Driver</option>
                       {driversList.length > 0 ? (
@@ -844,28 +846,65 @@ const FuelLogsPage = () => {
                     </select>
                   </div>
 
-                  <div className="col-span-3">
-                    <label className="block text-sm text-gray-600 mb-1">
-                      Amount <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      name="amount"
-                      type="number"
-                      value={form.amount}
-                      onChange={onFormChange}
-                      className="w-full border rounded-md px-3 py-2 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300"
-                    />
+                  {/* Amount and Unit Row */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Amount <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        name="amount"
+                        type="number"
+                        step="0.01"
+                        value={form.amount}
+                        onChange={onFormChange}
+                        placeholder="0.00"
+                        className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition shadow-sm"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Unit
+                      </label>
+                      <input
+                        name="unit"
+                        value={selectedVehicle}
+                        disabled
+                        className="w-full border border-gray-200 rounded-lg px-4 py-2.5 bg-gray-50 text-gray-600 cursor-not-allowed shadow-sm"
+                      />
+                    </div>
                   </div>
-                  <div className="col-span-1">
-                    <label className="block text-sm text-gray-600 mb-1">
-                      Unit
-                    </label>
-                    <input
-                      name="unit"
-                      value={selectedVehicle}
-                      disabled
-                      className="w-full border rounded-md px-3 py-2 bg-gray-100 cursor-not-allowed"
-                    />
+
+                  {/* Officer and Date Row */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Officer In-Charge
+                      </label>
+                      <input
+                        name="officer"
+                        value={userName}
+                        disabled
+                        className="w-full border border-gray-200 rounded-lg px-4 py-2.5 bg-gray-50 text-gray-600 cursor-not-allowed shadow-sm"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Date
+                      </label>
+                      <input
+                        name="date"
+                        value={new Date().toLocaleDateString("en-US", {
+                          month: "long",
+                          day: "numeric",
+                          year: "numeric",
+                        })}
+                        disabled
+                        className="w-full border border-gray-200 rounded-lg px-4 py-2.5 bg-gray-50 text-gray-600 cursor-not-allowed shadow-sm"
+                      />
+                    </div>
                   </div>
                 </div>
 

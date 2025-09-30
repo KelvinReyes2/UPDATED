@@ -38,6 +38,8 @@ export default function QuotaManagementSuper() {
   const [saving, setSaving] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [quotaMatchError, setQuotaMatchError] = useState(false);
+  const [newQuotaError, setNewQuotaError] = useState("");
+  const [confirmQuotaError, setConfirmQuotaError] = useState("");
   const [password, setPassword] = useState("");
   const [resetPassword, setResetPassword] = useState("");
   const [passwordError, setPasswordError] = useState("");
@@ -165,14 +167,40 @@ export default function QuotaManagementSuper() {
     return formatDate(currentQuotaData.endDate.toDate());
   };
 
-  // Handle saving quota
+  // Handle saving quota with validation
   const handleSaveQuota = async () => {
-    if (!newQuota || !confirmQuota) return;
+    // Reset all errors
+    setNewQuotaError("");
+    setConfirmQuotaError("");
+    setQuotaMatchError(false);
 
-    if (newQuota !== confirmQuota) {
-      setQuotaMatchError(true);
-      return;
+    let hasError = false;
+
+    // Validate new quota field
+    if (!newQuota || newQuota.trim() === "") {
+      setNewQuotaError("New quota is required");
+      hasError = true;
+    } else if (parseFloat(newQuota) <= 0 || isNaN(parseFloat(newQuota))) {
+      setNewQuotaError("New quota must be a positive number");
+      hasError = true;
     }
+
+    // Validate confirm quota field
+    if (!confirmQuota || confirmQuota.trim() === "") {
+      setConfirmQuotaError("Please confirm the new quota");
+      hasError = true;
+    } else if (parseFloat(confirmQuota) <= 0 || isNaN(parseFloat(confirmQuota))) {
+      setConfirmQuotaError("Confirm quota must be a positive number");
+      hasError = true;
+    }
+
+    // Check if quotas match (only if both are filled)
+    if (!hasError && newQuota !== confirmQuota) {
+      setQuotaMatchError(true);
+      hasError = true;
+    }
+
+    if (hasError) return;
 
     if (currentUser) {
       await saveSystemLog(
@@ -182,7 +210,6 @@ export default function QuotaManagementSuper() {
       );
     }
 
-    setQuotaMatchError(false);
     setPassword("");
     setPasswordError("");
     setIsModalOpen(true);
@@ -205,7 +232,7 @@ export default function QuotaManagementSuper() {
 
         const value = parseFloat(newQuota);
         if (isNaN(value) || value <= 0) {
-          setQuotaMatchError(true);
+          setNewQuotaError("Invalid quota value");
           setSaving(false);
           setIsModalOpen(false);
           return;
@@ -247,6 +274,9 @@ export default function QuotaManagementSuper() {
         setConfirmQuota("");
         setPassword("");
         setPasswordError("");
+        setNewQuotaError("");
+        setConfirmQuotaError("");
+        setQuotaMatchError(false);
 
         setToastMessage(`Quota updated successfully!`);
         setShowSuccessToast(true);
@@ -261,6 +291,7 @@ export default function QuotaManagementSuper() {
       setSaving(false);
     }
   };
+
   const saveSystemLog = async (activity, performedBy, role) => {
     try {
       await addDoc(collection(db, "systemLogs"), {
@@ -304,6 +335,8 @@ export default function QuotaManagementSuper() {
         setNewQuota("");
         setConfirmQuota("");
         setQuotaMatchError(false);
+        setNewQuotaError("");
+        setConfirmQuotaError("");
         setResetPassword("");
         setResetPasswordError("");
 
@@ -437,25 +470,58 @@ export default function QuotaManagementSuper() {
                     </select>
                   )}
 
-                  <input
-                    type="number"
-                    placeholder="Enter new quota"
-                    className={`w-full border rounded-md px-3 py-2 mb-2 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300 disabled:bg-gray-100 disabled:cursor-not-allowed ${quotaMatchError ? "bg-red-100 border-red-500" : ""}`}
-                    value={newQuota}
-                    onChange={(e) => setNewQuota(e.target.value)}
-                    disabled={shouldDisableFields()}
-                  />
-                  <input
-                    type="number"
-                    placeholder="Confirm new quota"
-                    className={`w-full border rounded-md px-3 py-2 mb-2 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300 disabled:bg-gray-100 disabled:cursor-not-allowed ${quotaMatchError ? "bg-red-100 border-red-500" : ""}`}
-                    value={confirmQuota}
-                    onChange={(e) => setConfirmQuota(e.target.value)}
-                    disabled={shouldDisableFields()}
-                  />
+                  <div className="mb-2">
+                    <label className="block text-sm text-gray-600 mb-1">
+                      New Quota <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="number"
+                      placeholder="Enter new quota"
+                      className={`w-full border rounded-md px-3 py-2 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300 disabled:bg-gray-100 disabled:cursor-not-allowed ${
+                        newQuotaError ? "border-red-500" : ""
+                      }`}
+                      value={newQuota}
+                      onChange={(e) => {
+                        setNewQuota(e.target.value);
+                        setNewQuotaError("");
+                        setQuotaMatchError(false);
+                      }}
+                      disabled={shouldDisableFields()}
+                    />
+                    {newQuotaError && (
+                      <p className="text-red-500 text-xs mt-1 font-semibold">
+                        {newQuotaError}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="mb-2">
+                    <label className="block text-sm text-gray-600 mb-1">
+                      Confirm New Quota <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="number"
+                      placeholder="Confirm new quota"
+                      className={`w-full border rounded-md px-3 py-2 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300 disabled:bg-gray-100 disabled:cursor-not-allowed ${
+                        confirmQuotaError || quotaMatchError ? "border-red-500" : ""
+                      }`}
+                      value={confirmQuota}
+                      onChange={(e) => {
+                        setConfirmQuota(e.target.value);
+                        setConfirmQuotaError("");
+                        setQuotaMatchError(false);
+                      }}
+                      disabled={shouldDisableFields()}
+                    />
+                    {confirmQuotaError && (
+                      <p className="text-red-500 text-xs mt-1 font-semibold">
+                        {confirmQuotaError}
+                      </p>
+                    )}
+                  </div>
 
                   {quotaMatchError && (
-                    <div className="flex items-center space-x-2 mt-3">
+                    <div className="flex items-center space-x-2 mt-2 mb-2">
                       <p className="text-red-500 text-sm font-semibold">
                         The quota values you entered do not match. Please ensure
                         that both the 'New Quota' and 'Confirm Quota' fields

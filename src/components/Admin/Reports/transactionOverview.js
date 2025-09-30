@@ -105,12 +105,21 @@ const formatTimestamp = (timestamp) => {
   }
 };
 
+// Helper function to get date in YYYY-MM-DD format
+const getDateString = (date) => {
+  if (!date) return null;
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
 const TransactionOverview = () => {
   const [transactions, setTransactions] = useState([]);
   const [filteredTransactions, setFilteredTransactions] = useState([]);
   const [routes, setRoutes] = useState([]);
   const [units, setUnits] = useState([]);
-  const [setUnitTracking] = useState([]);
+  const [unitLogs, setUnitLogs] = useState([]);
   const [selectedRoute, setSelectedRoute] = useState("");
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
@@ -204,22 +213,22 @@ const TransactionOverview = () => {
     }
   }, []);
 
-  // Fetch unit tracking from Firestore
-  const fetchUnitTracking = useCallback(async () => {
+  // Fetch unit logs from Firestore
+  const fetchUnitLogs = useCallback(async () => {
     try {
-      const unitTrackingRef = collection(db, "unitTracking");
-      const querySnapshot = await getDocs(unitTrackingRef);
-      const unitTrackingData = [];
+      const unitLogsRef = collection(db, "unitLogs");
+      const querySnapshot = await getDocs(unitLogsRef);
+      const unitLogsData = [];
       querySnapshot.forEach((doc) => {
         const data = doc.data();
-        unitTrackingData.push({
+        unitLogsData.push({
           id: doc.id,
           ...data,
         });
       });
-      setUnitTracking(unitTrackingData);
+      setUnitLogs(unitLogsData);
     } catch (error) {
-      console.error("Error fetching unit tracking:", error);
+      console.error("Error fetching unit logs:", error);
     }
   }, []);
 
@@ -267,14 +276,34 @@ const TransactionOverview = () => {
     }
   }, []);
 
-  // Get unit document ID for a driver using driverUID
-  const getUnitDocId = (driverUID) => {
-    if (!driverUID) return null;
+  // Get unit for a specific transaction based on driverUID and transaction date
+  const getUnitForTransaction = (driverUID, transactionTimestamp) => {
+    if (!driverUID || !transactionTimestamp) return "No Unit Assigned";
 
-    const matchedUnit = units.find((unit) => unit.unitHolder === driverUID);
-    if (!matchedUnit) return null;
+    const transactionDate = getDateFromTimestamp(transactionTimestamp);
+    if (!transactionDate) return "No Unit Assigned";
 
-    return matchedUnit.id;
+    const transactionDateString = getDateString(transactionDate);
+
+    // Find matching unit log for this driver on this date
+    const matchingLog = unitLogs.find((log) => {
+      if (log.unitHolder !== driverUID) return false;
+
+      const assignedDate = getDateFromTimestamp(log.assigned);
+      if (!assignedDate) return false;
+
+      const assignedDateString = getDateString(assignedDate);
+
+      // Check if the transaction date matches the assigned date
+      return assignedDateString === transactionDateString;
+    });
+
+    // Only return unit from unitLogs - no fallback to prevent overwriting historical data
+    if (matchingLog && matchingLog.unit) {
+      return matchingLog.unit;
+    }
+
+    return "No Unit Assigned";
   };
 
   // Filter transactions by date range, route, and search
@@ -384,7 +413,7 @@ const TransactionOverview = () => {
       fetchTransactions(),
       fetchRoutes(),
       fetchUnits(),
-      fetchUnitTracking(),
+      fetchUnitLogs(),
     ]);
 
     // Log the refresh activity
@@ -420,14 +449,14 @@ const TransactionOverview = () => {
   ];
 
   const rows = filteredTransactions.map((transaction) => {
-    const unitDocId = getUnitDocId(transaction.driverUID);
+    const unit = getUnitForTransaction(transaction.driverUID, transaction.timestamp);
     const { fullDateTime } = formatTimestamp(transaction.timestamp);
     return [
       transaction.id,
       transaction.invoiceNum,
       transaction.paymentMethod,
       transaction.driverName,
-      unitDocId ? unitDocId : "No Unit Assigned",
+      unit,
       `₱${transaction.farePrice}`,
       transaction.route,
       transaction.isVoided ? "Voided" : "Successful",
@@ -486,7 +515,7 @@ const TransactionOverview = () => {
         fetchTransactions(),
         fetchRoutes(),
         fetchUnits(),
-        fetchUnitTracking(),
+        fetchUnitLogs(),
       ]);
     };
     initData();
@@ -494,7 +523,7 @@ const TransactionOverview = () => {
     fetchTransactions,
     fetchRoutes,
     fetchUnits,
-    fetchUnitTracking,
+    fetchUnitLogs,
     fetchUserRole,
   ]);
 
@@ -890,7 +919,7 @@ const TransactionOverview = () => {
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {currentTransactions.map((transaction) => {
-                const unitDocId = getUnitDocId(transaction.driverUID);
+                const unit = getUnitForTransaction(transaction.driverUID, transaction.timestamp);
                 const { time, date } = formatTimestamp(transaction.timestamp);
                 return (
                   <tr key={transaction.id}>
@@ -915,7 +944,7 @@ const TransactionOverview = () => {
                       {transaction.driverName}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {unitDocId ? unitDocId : "No Unit Assigned"}
+                      {unit}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       ₱{transaction.farePrice}

@@ -432,7 +432,6 @@ export default function DriverDispatch() {
       // Add entry to unitLogs collection
       await addDoc(collection(db, "unitLogs"), {
         unitHolder: row.driverId,
-        driverName: row.driverName,
         unit: availableUnit.id,
         assignedAt: serverTimestamp(),
       });
