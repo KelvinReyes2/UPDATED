@@ -243,7 +243,7 @@ export default function DriverDispatch() {
         status = "Dispatched";
         unit = dispatchedUnit.id;
         serialNo = dispatchedUnit.serialNo || "N/A";
-        
+
         const dispatchedVehicle = vehicles.find(
           (v) => v.vehicleID === dispatchedUnit.vehicleID
         );
@@ -260,16 +260,18 @@ export default function DriverDispatch() {
         if (selectedVehicle) {
           vehicleID = selectedVehicle.vehicleID;
           routeId = selectedVehicle.routeId;
-          
+
           const availableUnit = unitData.find(
-            (u) => u.vehicleID === selectedVehicle.vehicleID && u.status === "Available"
+            (u) =>
+              u.vehicleID === selectedVehicle.vehicleID &&
+              u.status === "Available"
           );
-          
+
           if (availableUnit) {
             unit = availableUnit.id;
             serialNo = availableUnit.serialNo || "N/A";
           }
-          
+
           const selectedRoute = routes.find((r) => r.id === routeId);
           if (selectedRoute) routeName = selectedRoute.route;
           status = "Available";
@@ -372,7 +374,8 @@ export default function DriverDispatch() {
       if (!selectedVehicle) return;
 
       const availableUnit = unitData.find(
-        (u) => u.vehicleID === selectedVehicle.vehicleID && u.status === "Available"
+        (u) =>
+          u.vehicleID === selectedVehicle.vehicleID && u.status === "Available"
       );
 
       setDriverSelections((prev) => ({
@@ -413,7 +416,8 @@ export default function DriverDispatch() {
       if (!selectedVehicle) return alert("Selected vehicle not found.");
 
       const availableUnit = unitData.find(
-        (u) => u.vehicleID === selectedVehicle.vehicleID && u.status === "Available"
+        (u) =>
+          u.vehicleID === selectedVehicle.vehicleID && u.status === "Available"
       );
       if (!availableUnit)
         return alert("No available unit found for this vehicle.");
@@ -568,15 +572,15 @@ export default function DriverDispatch() {
   const fetchUnitLogsForExport = async () => {
     try {
       let q;
-      
+
       if (exportStartDate && exportEndDate) {
         // Date range: start date to end date
         const startDate = new Date(exportStartDate);
         startDate.setHours(0, 0, 0, 0);
-        
+
         const endDate = new Date(exportEndDate);
         endDate.setHours(23, 59, 59, 999);
-        
+
         q = query(
           collection(db, "unitLogs"),
           where("assignedAt", ">=", startDate),
@@ -587,10 +591,10 @@ export default function DriverDispatch() {
         // Single day: only the start date
         const startDate = new Date(exportStartDate);
         startDate.setHours(0, 0, 0, 0);
-        
+
         const endDate = new Date(exportStartDate);
         endDate.setHours(23, 59, 59, 999);
-        
+
         q = query(
           collection(db, "unitLogs"),
           where("assignedAt", ">=", startDate),
@@ -607,7 +611,7 @@ export default function DriverDispatch() {
 
       for (const docSnap of snapshot.docs) {
         const data = docSnap.data();
-        
+
         // Fetch full driver name if not already in the log
         let driverFullName = data.driverName || "N/A";
         if (data.unitHolder && !data.driverName) {
@@ -615,7 +619,8 @@ export default function DriverDispatch() {
             const userDoc = await getDoc(doc(db, "users", data.unitHolder));
             if (userDoc.exists()) {
               const userData = userDoc.data();
-              driverFullName = `${userData.firstName || ""} ${userData.middleName || ""} ${userData.lastName || ""}`.trim();
+              driverFullName =
+                `${userData.firstName || ""} ${userData.middleName || ""} ${userData.lastName || ""}`.trim();
             }
           } catch (err) {
             console.error("Error fetching driver name:", err);
@@ -642,7 +647,7 @@ export default function DriverDispatch() {
     setIsExportingCSV(true);
     try {
       const logs = await fetchUnitLogsForExport();
-      
+
       const headers = ["Driver Name", "Unit", "Date"];
       const rows = logs.map((log) => [
         log.driverName,
@@ -653,9 +658,9 @@ export default function DriverDispatch() {
       exportToCSV(
         headers,
         rows,
-        "Unit-History-Report",
         "Unit-History-Report.csv",
-        userName
+        userName,
+        "Unit-History-Report"
       );
 
       await logSystemActivity("Exported Unit History Report to CSV", userName);
@@ -663,7 +668,7 @@ export default function DriverDispatch() {
       setToastMessage("Unit history exported to CSV successfully!");
       setShowSuccessToast(true);
       setTimeout(() => setShowSuccessToast(false), 3000);
-      
+
       closeExportModal();
     } catch (error) {
       console.error("Error exporting to CSV:", error);
@@ -677,7 +682,7 @@ export default function DriverDispatch() {
     setIsExportingPDF(true);
     try {
       const logs = await fetchUnitLogsForExport();
-      
+
       const headers = ["Driver Name", "Unit", "Date"];
       const rows = logs.map((log) => [
         log.driverName,
@@ -698,7 +703,7 @@ export default function DriverDispatch() {
       setToastMessage("Unit history exported to PDF successfully!");
       setShowSuccessToast(true);
       setTimeout(() => setShowSuccessToast(false), 3000);
-      
+
       closeExportModal();
     } catch (error) {
       console.error("Error exporting to PDF:", error);
@@ -742,16 +747,16 @@ export default function DriverDispatch() {
               {r.vehicleID || "N/A"}
             </div>
           );
-        
+
         const availableVehicles = vehicles.filter((vehicle) => {
           if (vehicle.status === "Inactive") {
             return false;
           }
-          
+
           return unitData.some(
-            (unit) => 
-              unit.vehicleID === vehicle.vehicleID && 
-              unit.status === "Available" && 
+            (unit) =>
+              unit.vehicleID === vehicle.vehicleID &&
+              unit.status === "Available" &&
               unit.unitHolder !== r.driverId
           );
         });
@@ -976,7 +981,7 @@ export default function DriverDispatch() {
                   <option value="Driver">Driver</option>
                   <option value="Reliever">Reliever</option>
                 </select>
-                
+
                 {/* Export Button */}
                 <button
                   onClick={openExportModal}
@@ -1080,7 +1085,10 @@ export default function DriverDispatch() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    End Date <span className="text-gray-400 font-normal">(Optional)</span>
+                    End Date{" "}
+                    <span className="text-gray-400 font-normal">
+                      (Optional)
+                    </span>
                   </label>
                   <input
                     type="date"
@@ -1093,7 +1101,8 @@ export default function DriverDispatch() {
 
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                 <p className="text-sm text-blue-800">
-                  <span className="font-semibold">Note:</span> {getExportDescription()}
+                  <span className="font-semibold">Note:</span>{" "}
+                  {getExportDescription()}
                 </p>
               </div>
             </div>

@@ -12,6 +12,9 @@ import {
   limit,
   getDocs,
   addDoc,
+  serverTimestamp,
+  getDoc,
+  doc,
 } from "firebase/firestore";
 import { Wallet, Shield, RotateCcw, Calendar } from "lucide-react";
 
@@ -39,7 +42,8 @@ export default function QuotaManagementSuper() {
   const [resetPassword, setResetPassword] = useState("");
   const [passwordError, setPasswordError] = useState("");
   const [resetPasswordError, setResetPasswordError] = useState("");
-  
+  const [currentUser, setCurrentUser] = useState(null);
+
   // Fetch latest quota document to display current quota
   useEffect(() => {
     const fetchQuota = async () => {
@@ -47,7 +51,7 @@ export default function QuotaManagementSuper() {
         const q = query(
           collection(db, "quotaTarget"),
           orderBy("timestamp", "desc"),
-          limit(1),
+          limit(1)
         );
         const snap = await getDocs(q);
         if (!snap.empty) {
@@ -55,7 +59,7 @@ export default function QuotaManagementSuper() {
           const data = docSnap.data();
           setCurrentQuota(parseFloat(data.target) || 0);
           setCurrentQuotaData(data);
-          
+
           // Set the current period and quarter from the fetched data
           if (data.period) {
             setQuotaPeriod(data.period);
@@ -73,26 +77,53 @@ export default function QuotaManagementSuper() {
     fetchQuota();
   }, []);
 
+  useEffect(() => {
+    const fetchCurrentUser = async () => {
+      try {
+        const auth = getAuth();
+        const user = auth.currentUser;
+
+        if (user) {
+          // get the Firestore doc using UID from Firebase Auth
+          const docRef = doc(db, "users", user.uid);
+          const docSnap = await getDoc(docRef);
+
+          if (docSnap.exists()) {
+            setCurrentUser(docSnap.data()); // {firstName, lastName, role, etc.}
+          }
+        }
+      } catch (err) {
+        console.error("Error fetching current user:", err);
+      }
+    };
+
+    fetchCurrentUser();
+  }, []);
+
   // Get quarter start and end date based on selected quarter
   const getQuarterDates = (quarter) => {
     const today = new Date();
     const currentYear = today.getFullYear();
     const currentMonth = today.getMonth(); // 0-based (0 = January, 11 = December)
-    
+
     // Determine which quarter we're currently in
     let currentQuarter;
-    if (currentMonth <= 2) currentQuarter = "Q1"; // Jan-Mar
-    else if (currentMonth <= 5) currentQuarter = "Q2"; // Apr-Jun
-    else if (currentMonth <= 8) currentQuarter = "Q3"; // Jul-Sep
+    if (currentMonth <= 2)
+      currentQuarter = "Q1"; // Jan-Mar
+    else if (currentMonth <= 5)
+      currentQuarter = "Q2"; // Apr-Jun
+    else if (currentMonth <= 8)
+      currentQuarter = "Q3"; // Jul-Sep
     else currentQuarter = "Q4"; // Oct-Dec
-    
+
     // If setting a quota for a quarter that has already passed this year,
     // set it for next year
-    const yearToUse = (quarter < currentQuarter || 
-                      (quarter === currentQuarter && today.getDate() > 15)) 
-                     ? currentYear + 1 
-                     : currentYear;
-    
+    const yearToUse =
+      quarter < currentQuarter ||
+      (quarter === currentQuarter && today.getDate() > 15)
+        ? currentYear + 1
+        : currentYear;
+
     switch (quarter) {
       case "Q1":
         return {
@@ -121,10 +152,10 @@ export default function QuotaManagementSuper() {
 
   // Format date to readable format (e.g., "March 9, 2025")
   const formatDate = (date) => {
-    return date.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
+    return date.toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
     });
   };
 
@@ -136,13 +167,19 @@ export default function QuotaManagementSuper() {
 
   // Handle saving quota
   const handleSaveQuota = async () => {
-    if (!newQuota || !confirmQuota) {
-      return;
-    }
+    if (!newQuota || !confirmQuota) return;
 
     if (newQuota !== confirmQuota) {
       setQuotaMatchError(true);
       return;
+    }
+
+    if (currentUser) {
+      await saveSystemLog(
+        "Updated the Quota",
+        `${currentUser.firstName} ${currentUser.lastName}`,
+        currentUser.role
+      );
     }
 
     setQuotaMatchError(false);
@@ -205,7 +242,7 @@ export default function QuotaManagementSuper() {
           startDate: { toDate: () => start },
           endDate: { toDate: () => end },
         });
-        
+
         setNewQuota("");
         setConfirmQuota("");
         setPassword("");
@@ -222,6 +259,19 @@ export default function QuotaManagementSuper() {
       setPasswordError("Incorrect password. Please try again.");
     } finally {
       setSaving(false);
+    }
+  };
+  const saveSystemLog = async (activity, performedBy, role) => {
+    try {
+      await addDoc(collection(db, "systemLogs"), {
+        activity,
+        performedBy, // e.g. "Erwin Jay Mendoza"
+        role, // e.g. "Admin"
+        timestamp: serverTimestamp(),
+      });
+      console.log("System log saved!");
+    } catch (err) {
+      console.error("Error saving log:", err);
     }
   };
 
@@ -244,7 +294,10 @@ export default function QuotaManagementSuper() {
     try {
       const user = auth.currentUser;
       if (user) {
-        const credential = EmailAuthProvider.credential(user.email, resetPassword);
+        const credential = EmailAuthProvider.credential(
+          user.email,
+          resetPassword
+        );
         await reauthenticateWithCredential(user, credential);
 
         // Reset form fields and enable inputs by clearing current quota data
@@ -253,11 +306,13 @@ export default function QuotaManagementSuper() {
         setQuotaMatchError(false);
         setResetPassword("");
         setResetPasswordError("");
-        
+
         // Clear current quota data to enable fields
         setCurrentQuotaData(null);
 
-        setToastMessage("Quota fields have been reset. You can now set a new quota.");
+        setToastMessage(
+          "Quota fields have been reset. You can now set a new quota."
+        );
         setShowSuccessToast(true);
         setTimeout(() => setShowSuccessToast(false), 3000);
 
@@ -322,7 +377,7 @@ export default function QuotaManagementSuper() {
                       maximumFractionDigits: 2,
                     })}
                   </div>
-                  
+
                   {/* Current Quota End Date */}
                   <div className="mt-6 flex items-center gap-2 text-sm text-gray-600 bg-gray-50 px-4 py-2 rounded-lg">
                     <Calendar className="w-4 h-4" />
@@ -348,7 +403,7 @@ export default function QuotaManagementSuper() {
                       </button>
                     )}
                   </div>
-                  
+
                   <p className="text-base text-gray-500 mb-4">
                     NOTE: If you want to modify the current quota, input the new
                     quota and retype the quota to confirm that you really want

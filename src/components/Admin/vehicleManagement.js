@@ -84,17 +84,17 @@ export default function VehicleManagement() {
         limit(1)
       );
       const snapshot = await getDocs(vehiclesQuery);
-      
+
       if (snapshot.empty) {
         return "Vehicle_0001";
       }
-      
+
       const lastVehicle = snapshot.docs[0].data();
       const lastVehicleID = lastVehicle.vehicleID || "Vehicle_0000";
-      const lastNumber = parseInt(lastVehicleID.split('_')[1] || "0");
+      const lastNumber = parseInt(lastVehicleID.split("_")[1] || "0");
       const nextNumber = lastNumber + 1;
-      
-      return `Vehicle_${String(nextNumber).padStart(4, '0')}`;
+
+      return `Vehicle_${String(nextNumber).padStart(4, "0")}`;
     } catch (error) {
       console.error("Error generating vehicle ID:", error);
       return "Vehicle_0001";
@@ -110,16 +110,16 @@ export default function VehicleManagement() {
         limit(1)
       );
       const snapshot = await getDocs(unitsQuery);
-      
+
       if (snapshot.empty) {
         return "SE_1001";
       }
-      
+
       const lastUnit = snapshot.docs[0].data();
       const lastSerialNo = lastUnit.serialNo || "SE_1000";
-      const lastNumber = parseInt(lastSerialNo.split('_')[1] || "1000");
+      const lastNumber = parseInt(lastSerialNo.split("_")[1] || "1000");
       const nextNumber = lastNumber + 1;
-      
+
       return `SE_${nextNumber}`;
     } catch (error) {
       console.error("Error generating serial number:", error);
@@ -179,7 +179,7 @@ export default function VehicleManagement() {
 
   // Function to check if unit already exists
   const checkUnitExists = (unitId) => {
-    return units.some(unit => unit.id.toLowerCase() === unitId.toLowerCase());
+    return units.some((unit) => unit.id.toLowerCase() === unitId.toLowerCase());
   };
 
   // Function to save new unit with duplicate check
@@ -187,7 +187,7 @@ export default function VehicleManagement() {
     if (!newUnitText.trim()) return;
 
     const unitId = newUnitText.trim();
-    
+
     // Check if unit already exists
     if (checkUnitExists(unitId)) {
       alert("This unit ID already exists. Please choose a different one.");
@@ -197,7 +197,7 @@ export default function VehicleManagement() {
     setSavingUnit(true);
     try {
       const nextSerialNo = await generateNextSerialNumber();
-      
+
       // Remove the 'unit' field, just use document ID and other fields
       await setDoc(doc(db, "unit", unitId), {
         serialNo: nextSerialNo,
@@ -206,19 +206,16 @@ export default function VehicleManagement() {
         vehicleID: "",
       });
 
-      await logSystemActivity(
-        `Added new unit: ${unitId}`,
-        userName
-      );
+      await logSystemActivity(`Added new unit: ${unitId}`, userName);
 
       setToastMessage("New unit added successfully!");
       setShowSuccessToast(true);
       setTimeout(() => setShowSuccessToast(false), 3000);
-      
+
       setIsAddingUnit(false);
       setNewUnitText("");
-      
-      setForm(prev => ({ ...prev, unit: unitId }));
+
+      setForm((prev) => ({ ...prev, unit: unitId }));
     } catch (error) {
       console.error("Error saving unit:", error);
       alert("Failed to save unit. Please try again.");
@@ -235,21 +232,26 @@ export default function VehicleManagement() {
 
   // Function to get available units for selection
   const getAvailableUnitsForAdd = useMemo(() => {
-    return units.filter(unit => {
+    return units.filter((unit) => {
       // For adding new vehicle: only show truly available units
-      return unit.status === "Available" && (!unit.vehicleID || unit.vehicleID === "");
+      return (
+        unit.status === "Available" &&
+        (!unit.vehicleID || unit.vehicleID === "")
+      );
     });
   }, [units]);
 
   // Function to get available units for editing
   const getAvailableUnitsForEdit = useMemo(() => {
     if (!viewing) return [];
-    
-    return units.filter(unit => {
+
+    return units.filter((unit) => {
       // For editing: show available units OR units assigned to current vehicle
-      const isAvailable = unit.status === "Available" && (!unit.vehicleID || unit.vehicleID === "");
+      const isAvailable =
+        unit.status === "Available" &&
+        (!unit.vehicleID || unit.vehicleID === "");
       const isCurrentVehicleUnit = unit.vehicleID === viewing.vehicleID;
-      
+
       return isAvailable || isCurrentVehicleUnit;
     });
   }, [units, viewing]);
@@ -362,7 +364,7 @@ export default function VehicleManagement() {
       const unit = units.find((u) => u.vehicleID === vehicle.vehicleID);
       const unitName = unit ? unit.id : ""; // Use document ID as unit name
       const serialNo = unit ? unit.serialNo : "";
-      
+
       const route = routes.find((r) => r.id === vehicle.routeId);
       const routeName = route ? route.route : "";
       const searchText =
@@ -388,7 +390,14 @@ export default function VehicleManagement() {
     });
   }, [filtered, routes, units]);
 
-  const headers = ["Vehicle ID", "Unit", "Serial No", "Fuel", "Route", "Status"];
+  const headers = [
+    "Vehicle ID",
+    "Unit",
+    "Serial No",
+    "Fuel",
+    "Route",
+    "Status",
+  ];
   const rows = filteredWithRowNumber.map((item) => [
     item.vehicleID,
     item.unitName,
@@ -404,9 +413,9 @@ export default function VehicleManagement() {
       await exportToCSV(
         headers,
         rows,
-        "Vehicle-Management-Report",
         "Vehicle-Management-Report.csv",
-        userName
+        userName,
+        "Vehicle-Management-Report"
       );
 
       await logSystemActivity("Exported Vehicle Report to CSV", userName);
@@ -521,10 +530,10 @@ export default function VehicleManagement() {
           onClick={() => {
             setViewing(row);
             const unit = units.find((u) => u.vehicleID === row.vehicleID);
-            setEdit({ 
-              ...row, 
+            setEdit({
+              ...row,
               unit: unit ? unit.id : "",
-              serialNo: unit ? unit.serialNo : ""
+              serialNo: unit ? unit.serialNo : "",
             });
           }}
           title="Edit"
@@ -631,8 +640,11 @@ export default function VehicleManagement() {
       }
 
       // Check if selected unit is still available
-      const selectedUnit = units.find(u => u.id === form.unit);
-      if (!selectedUnit || (selectedUnit.vehicleID && selectedUnit.vehicleID !== "")) {
+      const selectedUnit = units.find((u) => u.id === form.unit);
+      if (
+        !selectedUnit ||
+        (selectedUnit.vehicleID && selectedUnit.vehicleID !== "")
+      ) {
         setErrors({ unit: "Selected unit is no longer available." });
         setSaving(false);
         return;
@@ -688,8 +700,12 @@ export default function VehicleManagement() {
 
       // Check if selected unit is available (unless it's the current unit)
       if (newUnit && newUnit !== (prevUnit ? prevUnit.id : "")) {
-        const selectedUnit = units.find(u => u.id === newUnit);
-        if (!selectedUnit || (selectedUnit.vehicleID && selectedUnit.vehicleID !== viewing.vehicleID)) {
+        const selectedUnit = units.find((u) => u.id === newUnit);
+        if (
+          !selectedUnit ||
+          (selectedUnit.vehicleID &&
+            selectedUnit.vehicleID !== viewing.vehicleID)
+        ) {
           alert("Selected unit is no longer available.");
           setSavingEdit(false);
           return;
@@ -708,9 +724,9 @@ export default function VehicleManagement() {
       if (prevUnit && prevUnit.id !== newUnit) {
         await setDoc(
           doc(db, "unit", prevUnit.id),
-          { 
+          {
             vehicleID: "",
-            status: "Available"
+            status: "Available",
           },
           { merge: true }
         );
@@ -720,9 +736,9 @@ export default function VehicleManagement() {
       if (newUnit) {
         await setDoc(
           doc(db, "unit", newUnit),
-          { 
+          {
             vehicleID: viewing.vehicleID, // Store vehicleID, not document ID
-            status: "Available" // Keep status as Available as requested
+            status: "Available", // Keep status as Available as requested
           },
           { merge: true }
         );
@@ -730,7 +746,8 @@ export default function VehicleManagement() {
 
       const changes = [];
       const prevUnitName = prevUnit ? prevUnit.id : "";
-      if (prevUnitName !== newUnit) changes.push(`Unit: ${prevUnitName} → ${newUnit}`);
+      if (prevUnitName !== newUnit)
+        changes.push(`Unit: ${prevUnitName} → ${newUnit}`);
       if (viewing.fuel !== edit.fuel)
         changes.push(`Fuel: ${viewing.fuel} → ${edit.fuel}`);
       if (viewing.status !== edit.status)
@@ -961,7 +978,7 @@ export default function VehicleManagement() {
             <div className="p-12 grid ml-6 grid-cols-3 gap-x-5 gap-y-4">
               <div className="col-span-1">
                 <label className="block text-sm text-gray-600 mb-1">
-                  Vehicle ID
+                  Vehicle ID <span className="text-red-500">*</span>
                 </label>
                 <input
                   name="vehicleID"
@@ -980,7 +997,9 @@ export default function VehicleManagement() {
               </div>
 
               <div className="col-span-1">
-                <label className="block text-sm text-gray-600 mb-1">Unit</label>
+                <label className="block text-sm text-gray-600 mb-1">
+                  Unit <span className="text-red-500">*</span>
+                </label>
                 <div className="flex items-center gap-2">
                   {!isAddingUnit ? (
                     <>
@@ -1003,9 +1022,9 @@ export default function VehicleManagement() {
                         type="button"
                         onClick={() => setIsAddingUnit(true)}
                         className="h-10 w-10 rounded-lg flex items-center justify-center text-white shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-110 active:scale-95"
-                        style={{ 
+                        style={{
                           backgroundColor: primaryColor,
-                          background: `linear-gradient(135deg, ${primaryColor} 0%, #2a3f5f 100%)`
+                          background: `linear-gradient(135deg, ${primaryColor} 0%, #2a3f5f 100%)`,
                         }}
                         title="Add new unit"
                       >
@@ -1075,12 +1094,17 @@ export default function VehicleManagement() {
 
               <div className="col-span-1">
                 <label className="block text-sm text-gray-600 mb-1">
-                  Serial Number
+                  Serial Number <span className="text-red-500">*</span>
                 </label>
                 <input
                   name="serialNo"
                   className="w-full border rounded-md px-3 py-2 bg-gray-50 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300 border-gray-200"
-                  value={form.unit ? (units.find(u => u.id === form.unit)?.serialNo || "Will be auto-assigned") : "Select a unit first"}
+                  value={
+                    form.unit
+                      ? units.find((u) => u.id === form.unit)?.serialNo ||
+                        "Will be auto-assigned"
+                      : "Select a unit first"
+                  }
                   readOnly
                   title="Serial number from selected unit"
                 />
@@ -1103,7 +1127,7 @@ export default function VehicleManagement() {
 
               <div className="col-span-1">
                 <label className="block text-sm text-gray-600 mb-1">
-                  Route
+                  Route <span className="text-red-500">*</span>
                 </label>
                 <select
                   name="routeId"
@@ -1241,11 +1265,13 @@ export default function VehicleManagement() {
                 <select
                   value={edit.unit}
                   onChange={(e) => {
-                    const selectedUnit = units.find(u => u.id === e.target.value);
-                    setEdit({ 
-                      ...edit, 
+                    const selectedUnit = units.find(
+                      (u) => u.id === e.target.value
+                    );
+                    setEdit({
+                      ...edit,
                       unit: e.target.value,
-                      serialNo: selectedUnit ? selectedUnit.serialNo : ""
+                      serialNo: selectedUnit ? selectedUnit.serialNo : "",
                     });
                   }}
                   className="w-full border rounded-md px-3 py-2 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300"
@@ -1253,14 +1279,17 @@ export default function VehicleManagement() {
                   <option value="">Select Unit</option>
                   {getAvailableUnitsForEdit.map((u) => (
                     <option key={u.id} value={u.id}>
-                      {u.id} {u.vehicleID === viewing.vehicleID ? "(Current)" : ""}
+                      {u.id}{" "}
+                      {u.vehicleID === viewing.vehicleID ? "(Current)" : ""}
                     </option>
                   ))}
                 </select>
               </div>
 
               <div className="col-span-1">
-                <label className="block text-gray-600 mb-1">Serial Number</label>
+                <label className="block text-gray-600 mb-1">
+                  Serial Number
+                </label>
                 <input
                   className="w-full border rounded-md px-3 py-2 bg-gray-50 border-gray-200 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300"
                   value={edit.serialNo || "No serial number"}

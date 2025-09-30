@@ -7,8 +7,11 @@ import {
   onSnapshot,
   doc,
   setDoc,
+  getDoc,
   query,
   where,
+  addDoc,
+  serverTimestamp,
   getDocs,
 } from "firebase/firestore";
 import { exportToCSV, exportToPDF } from "../functions/exportFunctions";
@@ -61,6 +64,8 @@ export default function RouteManagementSuper() {
   const [edit, setEdit] = useState(null);
   const [savingEdit, setSavingEdit] = useState(false);
 
+  const [user, setCurrentUser] = useState(null);
+
   useEffect(() => {
     const unsub = onSnapshot(
       collection(db, "routes"),
@@ -92,6 +97,27 @@ export default function RouteManagementSuper() {
       }
     );
     return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    const fetchCurrentUser = async () => {
+      try {
+        const user = auth.currentUser;
+
+        if (user) {
+          const docRef = doc(db, "users", user.uid);
+          const docSnap = await getDoc(docRef);
+
+          if (docSnap.exists()) {
+            setCurrentUser(docSnap.data());
+          }
+        }
+      } catch (err) {
+        console.error("Error fetching current user:", err);
+      }
+    };
+
+    fetchCurrentUser();
   }, []);
 
   // Filter dropdown options
@@ -193,6 +219,20 @@ export default function RouteManagementSuper() {
     );
   };
 
+  const saveSystemLog = async (activity, performedBy, role) => {
+    try {
+      await addDoc(collection(db, "systemLogs"), {
+        activity,
+        performedBy,
+        role,
+        timestamp: serverTimestamp(),
+      });
+      console.log("System log saved!");
+    } catch (err) {
+      console.error("Error saving log:", err);
+    }
+  };
+
   const headers = [
     "Route ID",
     "Route",
@@ -218,7 +258,8 @@ export default function RouteManagementSuper() {
       columns,
       exportRows,
       "Route_Management.csv",
-      currentUser.email || "Unknown"
+      currentUser.email || "Unknown",
+      "Route Management"
     );
   };
 
@@ -273,7 +314,7 @@ export default function RouteManagementSuper() {
       ),
     },
     {
-      name: "Particular",
+      name: "Start Point",
       selector: (r) => r.Particular,
       sortable: true,
       width: "150px",
@@ -429,6 +470,7 @@ export default function RouteManagementSuper() {
       KM: "",
       Status: "Active",
     });
+
     setErrors({});
   };
 
@@ -485,6 +527,14 @@ export default function RouteManagementSuper() {
         Status: form.Status || "Active",
       });
 
+      if (user) {
+        await saveSystemLog(
+          "Added a new Route",
+          `${user.firstName} ${user.lastName}`,
+          user.role
+        );
+      }
+
       closeAdd();
       setShowAddToast(true);
       setTimeout(() => setShowAddToast(false), 3000);
@@ -508,6 +558,14 @@ export default function RouteManagementSuper() {
         },
         { merge: true }
       );
+
+      if (user) {
+        await saveSystemLog(
+          "Updated a Route's Status",
+          `${user.firstName} ${user.lastName}`,
+          user.role
+        );
+      }
 
       setViewing(null);
       setEdit(null);
@@ -820,7 +878,7 @@ export default function RouteManagementSuper() {
                       {/* Route – full width */}
                       <div className="col-span-2">
                         <label className="block text-sm text-gray-600 mb-1">
-                          Route
+                          Route <span className="text-red-500">*</span>
                         </label>
                         <input
                           name="Route"
@@ -839,7 +897,7 @@ export default function RouteManagementSuper() {
 
                       <div>
                         <label className="block text-sm text-gray-600 mb-1">
-                          Barangay
+                          Barangay <span className="text-red-500">*</span>
                         </label>
                         <input
                           name="Barangay"
@@ -860,7 +918,7 @@ export default function RouteManagementSuper() {
 
                       <div>
                         <label className="block text-sm text-gray-600 mb-1">
-                          Particular
+                          Particular <span className="text-red-500">*</span>
                         </label>
                         <input
                           name="Particular"
@@ -881,7 +939,7 @@ export default function RouteManagementSuper() {
 
                       <div>
                         <label className="block text-sm text-gray-600 mb-1">
-                          KM
+                          KM <span className="text-red-500">*</span>
                         </label>
                         <input
                           name="KM"

@@ -368,9 +368,9 @@ const TripLogs = () => {
       exportToCSV(
         headers,
         rows,
-        "Trip-Logs-Report",
         "Trip-Logs-Report.csv",
-        userName
+        userName,
+        "Trip-Logs-Report"
       );
 
       // Log the export activity (role will be mapped in logSystemActivity)

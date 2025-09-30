@@ -12,7 +12,14 @@ import {
   ArcElement,
   PointElement,
 } from "chart.js";
-import { collection, getDocs, query, orderBy, addDoc, serverTimestamp } from "firebase/firestore";
+import {
+  collection,
+  getDocs,
+  query,
+  orderBy,
+  addDoc,
+  serverTimestamp,
+} from "firebase/firestore";
 import { db } from "../../../firebase";
 import { FaMoneyBillWave, FaTicketAlt, FaBan } from "react-icons/fa";
 import { exportToCSV, exportToPDF } from "../../functions/exportFunctions";
@@ -29,15 +36,15 @@ ChartJS.register(
   Tooltip,
   Legend,
   ArcElement,
-  PointElement,
+  PointElement
 );
 
 // Helper function to get today's date in YYYY-MM-DD format in local timezone
 const getTodayDate = () => {
   const today = new Date();
   const year = today.getFullYear();
-  const month = String(today.getMonth() + 1).padStart(2, '0');
-  const day = String(today.getDate()).padStart(2, '0');
+  const month = String(today.getMonth() + 1).padStart(2, "0");
+  const day = String(today.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
 };
 
@@ -55,10 +62,7 @@ const getDateFromTimestamp = (timestamp) => {
     // Handle JavaScript Date
     else if (timestamp instanceof Date) {
       return timestamp;
-    } else if (
-      typeof timestamp === "string" &&
-      !isNaN(Date.parse(timestamp))
-    ) {
+    } else if (typeof timestamp === "string" && !isNaN(Date.parse(timestamp))) {
       return new Date(timestamp);
     } else {
       return null;
@@ -78,17 +82,17 @@ const formatTimestamp = (timestamp) => {
     }
 
     // Format time (e.g., 10:28 AM)
-    const time = date.toLocaleTimeString('en-US', { 
-      hour: '2-digit', 
-      minute: '2-digit',
-      hour12: true 
+    const time = date.toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
     });
 
     // Format date (e.g., September 17, 2025)
-    const dateStr = date.toLocaleDateString('en-US', { 
-      month: 'long', 
-      day: 'numeric', 
-      year: 'numeric' 
+    const dateStr = date.toLocaleDateString("en-US", {
+      month: "long",
+      day: "numeric",
+      year: "numeric",
     });
 
     // Full date time for export
@@ -124,13 +128,14 @@ const TransactionOverview = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [userRole, setUserRole] = useState("User");
-  
+
   const transactionsPerPage = 10;
   const primaryColor = "#364C6E";
 
   const auth = getAuth();
   const currentUser = auth.currentUser;
-  const userName = currentUser?.displayName || currentUser?.email || "Unknown User";
+  const userName =
+    currentUser?.displayName || currentUser?.email || "Unknown User";
 
   // Function to fetch user role
   const fetchUserRole = useCallback(async () => {
@@ -142,7 +147,7 @@ const TransactionOverview = () => {
     try {
       const userDocRef = doc(db, "users", currentUser.uid);
       const userDocSnap = await getDoc(userDocRef);
-      
+
       if (userDocSnap.exists()) {
         const userData = userDocSnap.data();
         setUserRole(userData.role || "User");
@@ -164,8 +169,10 @@ const TransactionOverview = () => {
   // Function to log system activities with mapped role
   const logSystemActivity = async (activity, performedBy, role = null) => {
     try {
-      const displayRole = role ? mapRoleForLogging(role) : mapRoleForLogging(userRole);
-      
+      const displayRole = role
+        ? mapRoleForLogging(role)
+        : mapRoleForLogging(userRole);
+
       await addDoc(collection(db, "systemLogs"), {
         activity,
         performedBy,
@@ -273,32 +280,35 @@ const TransactionOverview = () => {
   // Filter transactions by date range, route, and search
   const filterTransactions = useCallback(() => {
     let filtered = transactions;
-    
+
     // Filter by date range using the improved date filtering logic
     if (startDate || endDate) {
       filtered = filtered.filter((transaction) => {
         const transactionDate = getDateFromTimestamp(transaction.timestamp);
         if (!transactionDate) return false;
-        
+
         // Convert transaction date to local date string in YYYY-MM-DD format
         const year = transactionDate.getFullYear();
-        const month = String(transactionDate.getMonth() + 1).padStart(2, '0');
-        const day = String(transactionDate.getDate()).padStart(2, '0');
+        const month = String(transactionDate.getMonth() + 1).padStart(2, "0");
+        const day = String(transactionDate.getDate()).padStart(2, "0");
         const transactionDateString = `${year}-${month}-${day}`;
-        
+
         // If only start date is provided, show transactions from that specific date only
         if (startDate && !endDate) {
           return transactionDateString === startDate;
-        } 
+        }
         // If both dates are provided, show transactions in the range
         else if (startDate && endDate) {
-          return transactionDateString >= startDate && transactionDateString <= endDate;
+          return (
+            transactionDateString >= startDate &&
+            transactionDateString <= endDate
+          );
         }
         // If only end date is provided (unlikely but handle it)
         else if (!startDate && endDate) {
           return transactionDateString <= endDate;
         }
-        
+
         return true;
       });
     }
@@ -306,7 +316,7 @@ const TransactionOverview = () => {
     // Filter by route
     if (selectedRoute) {
       filtered = filtered.filter(
-        (transaction) => transaction.route === selectedRoute,
+        (transaction) => transaction.route === selectedRoute
       );
     }
 
@@ -314,7 +324,8 @@ const TransactionOverview = () => {
     if (search.trim()) {
       const searchQuery = search.trim().toLowerCase();
       filtered = filtered.filter((transaction) => {
-        const searchableText = `${transaction.id || ""} ${transaction.invoiceNum || ""} ${transaction.driverName || ""} ${transaction.route || ""} ${transaction.paymentMethod || ""} ${transaction.farePrice || ""}`.toLowerCase();
+        const searchableText =
+          `${transaction.id || ""} ${transaction.invoiceNum || ""} ${transaction.driverName || ""} ${transaction.route || ""} ${transaction.paymentMethod || ""} ${transaction.farePrice || ""}`.toLowerCase();
         return searchableText.includes(searchQuery);
       });
     }
@@ -375,12 +386,9 @@ const TransactionOverview = () => {
       fetchUnits(),
       fetchUnitTracking(),
     ]);
-    
+
     // Log the refresh activity
-    await logSystemActivity(
-      "Refreshed Transaction Overview Data",
-      userName
-    );
+    await logSystemActivity("Refreshed Transaction Overview Data", userName);
   };
 
   // Pagination functions
@@ -408,7 +416,7 @@ const TransactionOverview = () => {
     "Total Price",
     "Route",
     "Status",
-    "Timestamp"
+    "Timestamp",
   ];
 
   const rows = filteredTransactions.map((transaction) => {
@@ -423,7 +431,7 @@ const TransactionOverview = () => {
       `₱${transaction.farePrice}`,
       transaction.route,
       transaction.isVoided ? "Voided" : "Successful",
-      fullDateTime
+      fullDateTime,
     ];
   });
 
@@ -432,17 +440,17 @@ const TransactionOverview = () => {
       exportToCSV(
         headers,
         rows,
-        "Transaction-Overview-Report",
         "Transaction-Overview-Report.csv",
         userName,
+        "Transaction-Overview-Report"
       );
-      
+
       // Log the export activity
       await logSystemActivity(
         "Exported Transaction Overview Report to CSV",
         userName
       );
-      
+
       setIsDropdownOpen(false);
     } catch (error) {
       console.error("Error during CSV export:", error);
@@ -456,15 +464,15 @@ const TransactionOverview = () => {
         rows,
         "Transaction-Overview-Report",
         "Transaction-Overview-Report.pdf",
-        userName,
+        userName
       );
-      
+
       // Log the export activity
       await logSystemActivity(
         "Exported Transaction Overview Report to PDF",
         userName
       );
-      
+
       setIsDropdownOpen(false);
     } catch (error) {
       console.error("Error during PDF export:", error);
@@ -482,11 +490,24 @@ const TransactionOverview = () => {
       ]);
     };
     initData();
-  }, [fetchTransactions, fetchRoutes, fetchUnits, fetchUnitTracking, fetchUserRole]);
+  }, [
+    fetchTransactions,
+    fetchRoutes,
+    fetchUnits,
+    fetchUnitTracking,
+    fetchUserRole,
+  ]);
 
   useEffect(() => {
     filterTransactions();
-  }, [startDate, endDate, selectedRoute, search, transactions, filterTransactions]);
+  }, [
+    startDate,
+    endDate,
+    selectedRoute,
+    search,
+    transactions,
+    filterTransactions,
+  ]);
 
   useEffect(() => {
     calculateStats();
@@ -494,7 +515,7 @@ const TransactionOverview = () => {
 
   const currentTransactions = filteredTransactions.slice(
     (currentPage - 1) * transactionsPerPage,
-    currentPage * transactionsPerPage,
+    currentPage * transactionsPerPage
   );
 
   if (loading) {
@@ -658,14 +679,14 @@ const TransactionOverview = () => {
                 onChange={(e) => setSearch(e.target.value)}
               />
               <div className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-gray-400">
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        className="h-4 w-4"
-                        viewBox="0 0 24 24"
-                        fill="currentColor"
-                      >
-                        <path d="M15.5 14h-.8l-.3-.3A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16a6.471 6.471 0 0 0 4.2-1.6l.3.3v.8l5 5 1.5-1.5-5-5Zm-6 0C7 14 5 12 5 9.5S7 5 9.5 5 14 7 14 9.5 12 14 9.5 14Z" />
-                      </svg>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-4 w-4"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                >
+                  <path d="M15.5 14h-.8l-.3-.3A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16a6.471 6.471 0 0 0 4.2-1.6l.3.3v.8l5 5 1.5-1.5-5-5Zm-6 0C7 14 5 12 5 9.5S7 5 9.5 5 14 7 14 9.5 12 14 9.5 14Z" />
+                </svg>
               </div>
             </div>
           </div>
@@ -683,7 +704,7 @@ const TransactionOverview = () => {
           >
             Refresh Data
           </button>
-          
+
           {/* Export Button */}
           <div className="relative flex flex-col">
             <label className="text-sm font-medium text-gray-700 mb-1 opacity-0">
@@ -870,8 +891,7 @@ const TransactionOverview = () => {
             <tbody className="bg-white divide-y divide-gray-200">
               {currentTransactions.map((transaction) => {
                 const unitDocId = getUnitDocId(transaction.driverUID);
-                const { time, date } = formatTimestamp
-                (transaction.timestamp);
+                const { time, date } = formatTimestamp(transaction.timestamp);
                 return (
                   <tr key={transaction.id}>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">

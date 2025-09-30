@@ -252,9 +252,9 @@ export default function UserManagement() {
       await exportToCSV(
         headers,
         rows,
-        "User-Management-Report",
         "User-Management-Report.csv",
-        currentUserEmail
+        currentUserEmail,
+        "User Management Report"
       );
 
       // Log the export activity
@@ -854,7 +854,7 @@ export default function UserManagement() {
             <div className="p-12 grid ml-6 grid-cols-3 gap-x-5 gap-y-4">
               <div className="col-span-4">
                 <label className="block text-sm text-gray-600 mb-1">
-                  First Name
+                  First Name <span className="text-red-500">*</span>
                 </label>
                 <input
                   name="firstName"
@@ -887,7 +887,7 @@ export default function UserManagement() {
 
               <div className="col-span-2">
                 <label className="block text-sm text-gray-600 mb-1">
-                  Last Name
+                  Last Name <span className="text-red-500">*</span>
                 </label>
                 <input
                   name="lastName"
@@ -904,7 +904,7 @@ export default function UserManagement() {
 
               <div className="col-span-2">
                 <label className="block text-sm text-gray-600 mb-1">
-                  Email
+                  Email <span className="text-red-500">*</span>
                 </label>
                 <input
                   name="email"
@@ -922,7 +922,7 @@ export default function UserManagement() {
 
               <div className="col-span-2">
                 <label className="block text-sm text-gray-600 mb-1">
-                  Password
+                  Password <span className="text-red-500">*</span>
                 </label>
                 <input
                   name="password"
@@ -955,7 +955,7 @@ export default function UserManagement() {
 
               <div className="col-span-2">
                 <label className="block text-sm text-gray-600 mb-1">
-                  Telephone No.
+                  Telephone No. <span className="text-red-500">*</span>
                 </label>
                 <input
                   name="telNo"
@@ -965,6 +965,9 @@ export default function UserManagement() {
                   value={form.telNo}
                   onChange={onForm}
                 />
+                {errors.telNo && (
+                  <p className="text-red-500 text-xs mt-1">{errors.telNo}</p>
+                )}
               </div>
 
               <div className="col-span-1">
@@ -983,7 +986,7 @@ export default function UserManagement() {
               </div>
 
               <div className="col-span-1">
-                <label className="block text-gray-600 mb-1">Role</label>
+                <label className="block text-sm text-gray-600 mb-1">Role</label>
                 <select
                   className="w-full border rounded-md px-3 py-2 border-gray-200 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300"
                   value={form.role}

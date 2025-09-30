@@ -12,13 +12,13 @@ export default function ActivityLogSuper() {
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [selectedLog, setSelectedLog] = useState(null);
   const [search, setSearch] = useState("");
-  
+
   // Helper function to get today's date in YYYY-MM-DD format
   const getTodayDate = () => {
     const today = new Date();
     const year = today.getFullYear();
-    const month = String(today.getMonth() + 1).padStart(2, '0');
-    const day = String(today.getDate()).padStart(2, '0');
+    const month = String(today.getMonth() + 1).padStart(2, "0");
+    const day = String(today.getDate()).padStart(2, "0");
     return `${year}-${month}-${day}`;
   };
 
@@ -42,7 +42,7 @@ export default function ActivityLogSuper() {
     setSelectedLog(log);
     setIsViewModalOpen(true);
   };
-  
+
   const closeViewModal = () => {
     setIsViewModalOpen(false);
     setSelectedLog(null);
@@ -51,8 +51,8 @@ export default function ActivityLogSuper() {
   // Helper function to convert date to local YYYY-MM-DD format
   const toLocalDateString = (date) => {
     const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
     return `${year}-${month}-${day}`;
   };
 
@@ -97,14 +97,18 @@ export default function ActivityLogSuper() {
 
       // Actual date and time in the desired format (e.g., September 17, 2025, 10:28 AM)
       const fullDate = format(date, "MMMM dd, yyyy, hh:mm a");
-      
+
       // Local date in YYYY-MM-DD format for filtering
       const localDate = toLocalDateString(date);
 
       return { relativeTime, fullDate, localDate };
     } catch (error) {
       console.error("Error formatting timestamp:", error);
-      return { relativeTime: "Invalid Date", fullDate: "Invalid Date", localDate: null };
+      return {
+        relativeTime: "Invalid Date",
+        fullDate: "Invalid Date",
+        localDate: null,
+      };
     }
   };
 
@@ -154,17 +158,18 @@ export default function ActivityLogSuper() {
       const matchesSearch = !q || text.includes(q);
 
       let matchesDateFilter = true;
-      
+
       // Only apply date filter if at least start date is provided
       if (filterStartDate) {
         const { localDate } = formatTimestamp(log.timestamp);
-        
+
         if (localDate) {
           const logDate = localDate;
-          
+
           // If both start and end dates are provided
           if (filterStartDate && filterEndDate) {
-            matchesDateFilter = logDate >= filterStartDate && logDate <= filterEndDate;
+            matchesDateFilter =
+              logDate >= filterStartDate && logDate <= filterEndDate;
           }
           // If only start date is provided
           else if (filterStartDate) {
@@ -204,7 +209,8 @@ export default function ActivityLogSuper() {
       headers,
       exportRows,
       "Activity_Log.csv",
-      currentUser?.email || "Unknown"
+      currentUser?.email || "Unknown",
+      "Activity Log"
     );
   };
 
@@ -383,7 +389,7 @@ export default function ActivityLogSuper() {
                 <div className="relative">
                   <button
                     onClick={toggleDropdown}
-                    className="flex items-center gap-2 px-6 py-2 rounded-lg text-white shadow-md hover:shadow-lg transition"
+                    className="flex items-center gap-2 px-6 py-2 rounded-lg text-white shadow-md hover:shadow-lg transition mt-7"
                     style={{ backgroundColor: primaryColor }}
                   >
                     <span className="font-semibold">Export</span>

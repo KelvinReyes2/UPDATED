@@ -50,10 +50,7 @@ const getDateFromTimestamp = (timestamp) => {
     // Handle JavaScript Date
     else if (timestamp instanceof Date) {
       return timestamp;
-    } else if (
-      typeof timestamp === "string" &&
-      !isNaN(Date.parse(timestamp))
-    ) {
+    } else if (typeof timestamp === "string" && !isNaN(Date.parse(timestamp))) {
       return new Date(timestamp);
     } else {
       return null;
@@ -73,17 +70,17 @@ const formatTimestamp = (timestamp) => {
     }
 
     // Format time (e.g., 10:28 AM)
-    const time = date.toLocaleTimeString('en-US', { 
-      hour: '2-digit', 
-      minute: '2-digit',
-      hour12: true 
+    const time = date.toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
     });
 
     // Format date (e.g., September 17, 2025)
-    const dateStr = date.toLocaleDateString('en-US', { 
-      month: 'long', 
-      day: 'numeric', 
-      year: 'numeric' 
+    const dateStr = date.toLocaleDateString("en-US", {
+      month: "long",
+      day: "numeric",
+      year: "numeric",
     });
 
     // Full date time for export
@@ -284,9 +281,9 @@ const QuotaSummary = () => {
       exportToCSV(
         headers,
         rows,
-        "Quota-Summary-Report",
         "Quota-Summary-Report.csv",
-        userName
+        userName,
+        "Quota-Summary-Report"
       );
 
       // Log the export activity (role will be mapped in logSystemActivity)
@@ -703,7 +700,7 @@ const QuotaSummary = () => {
                     Current Total
                   </th>
                   <th className="px-6 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">
-                    Status
+                    Result
                   </th>
                   <th className="px-6 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">
                     Updated At

@@ -17,6 +17,9 @@ import {
   query,
   where,
   getDocs,
+  addDoc,
+  getDoc,
+  serverTimestamp,
 } from "firebase/firestore";
 import { exportToCSV, exportToPDF } from "../functions/exportFunctions";
 
@@ -71,6 +74,7 @@ export default function AdminManagementSuper() {
   const [errors, setErrors] = useState({});
 
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [user, setCurrentUser] = useState(null);
 
   const toggleDropdown = () => {
     setIsDropdownOpen((prev) => !prev);
@@ -129,6 +133,27 @@ export default function AdminManagementSuper() {
     );
     return () => unsub();
   }, [isAdminPage]);
+
+  useEffect(() => {
+    const fetchCurrentUser = async () => {
+      try {
+        const user = auth.currentUser;
+
+        if (user) {
+          const docRef = doc(db, "users", user.uid);
+          const docSnap = await getDoc(docRef);
+
+          if (docSnap.exists()) {
+            setCurrentUser(docSnap.data());
+          }
+        }
+      } catch (err) {
+        console.error("Error fetching current user:", err);
+      }
+    };
+
+    fetchCurrentUser();
+  }, []);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -193,7 +218,8 @@ export default function AdminManagementSuper() {
       headers,
       exportRows,
       "Admin_Management.csv",
-      currentUser?.email || "Unknown"
+      currentUser?.email || "Unknown",
+      "Admin Management"
     );
   };
 
@@ -362,6 +388,20 @@ export default function AdminManagementSuper() {
     }
   };
 
+  const saveSystemLog = async (activity, performedBy, role) => {
+    try {
+      await addDoc(collection(db, "systemLogs"), {
+        activity,
+        performedBy,
+        role,
+        timestamp: serverTimestamp(),
+      });
+      console.log("System log saved!");
+    } catch (err) {
+      console.error("Error saving log:", err);
+    }
+  };
+
   // Create auth user then add Firestore profile
   const saveAdmin = async () => {
     const e = {};
@@ -417,6 +457,14 @@ export default function AdminManagementSuper() {
       setToastMessage("New admin added successfully!");
       setShowSuccessToast(true);
       setTimeout(() => setShowSuccessToast(false), 3000);
+
+      if (user) {
+        await saveSystemLog(
+          "Added a new Admin",
+          `${user.firstName} ${user.lastName}`,
+          user.role
+        );
+      }
 
       closeAdd();
     } catch (err) {
@@ -500,6 +548,14 @@ export default function AdminManagementSuper() {
       setToastMessage("Admin details updated successfully!");
       setShowSuccessToast(true);
       setTimeout(() => setShowSuccessToast(false), 3000);
+
+      if (user) {
+        await saveSystemLog(
+          "Updated Admin's details",
+          `${user.firstName} ${user.lastName}`,
+          user.role
+        );
+      }
     } catch (err) {
       alert(err.message || String(err));
     } finally {
@@ -712,7 +768,7 @@ export default function AdminManagementSuper() {
             <div className="p-6 grid grid-cols-3 gap-x-5 gap-y-4">
               <div className="col-span-4">
                 <label className="block text-sm text-gray-600 mb-1">
-                  First Name
+                  First Name <span className="text-red-500">*</span>
                 </label>
                 <input
                   name="firstName"
@@ -745,7 +801,7 @@ export default function AdminManagementSuper() {
 
               <div className="col-span-2">
                 <label className="block text-sm text-gray-600 mb-1">
-                  Last Name
+                  Last Name <span className="text-red-500">*</span>
                 </label>
                 <input
                   name="lastName"
@@ -762,7 +818,7 @@ export default function AdminManagementSuper() {
 
               <div className="col-span-2">
                 <label className="block text-sm text-gray-600 mb-1">
-                  Email
+                  Email <span className="text-red-500">*</span>
                 </label>
                 <input
                   name="email"
@@ -780,7 +836,7 @@ export default function AdminManagementSuper() {
 
               <div className="col-span-2">
                 <label className="block text-sm text-gray-600 mb-1">
-                  Password
+                  Password <span className="text-red-500">*</span>
                 </label>
                 <input
                   name="password"
@@ -813,7 +869,7 @@ export default function AdminManagementSuper() {
 
               <div className="col-span-2">
                 <label className="block text-sm text-gray-600 mb-1">
-                  Telephone No.
+                  Telephone No. <span className="text-red-500">*</span>
                 </label>
                 <input
                   name="telNo"
@@ -823,6 +879,9 @@ export default function AdminManagementSuper() {
                   value={form.telNo}
                   onChange={onForm}
                 />
+                {errors.telNo && (
+                  <p className="text-red-500 text-xs mt-1">{errors.telNo}</p>
+                )}
               </div>
 
               <div className="col-span-1">
@@ -877,36 +936,38 @@ export default function AdminManagementSuper() {
 
                 {/* Dropdown */}
                 {permissionsOpen && (
-                  <div className="absolute top-full left-0 z-50 mt-1 w-full bg-white border rounded-md shadow-lg max-h-40 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-400 scrollbar-track-gray-100">
-                    {[
-                      "Dashboard Admin",
-                      "Unit Tracking",
-                      "User Management",
-                      "Driver Dispatch",
-                      "Vehicle Management",
-                      "Reports",
-                    ].map((perm) => (
-                      <label
-                        key={perm}
-                        className="flex items-center gap-2 px-2 py-1 hover:bg-gray-100"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={permissions.includes(perm)}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setPermissions((p) => [...p, perm]);
-                            } else {
-                              setPermissions((p) =>
-                                p.filter((x) => x !== perm)
-                              );
-                            }
-                          }}
-                          className="form-checkbox h-4 w-4 text-blue-600"
-                        />
-                        <span className="text-gray-700 text-sm">{perm}</span>
-                      </label>
-                    ))}
+                  <div className="relative bg-white rounded-2xl shadow-2xl w-[720px] max-w-[90%] p-3">
+                    <div className="grid grid-cols-2 gap-2">
+                      {[
+                        "Dashboard Admin",
+                        "Unit Tracking",
+                        "User Management",
+                        "Driver Dispatch",
+                        "Vehicle Management",
+                        "Reports",
+                      ].map((perm) => (
+                        <label
+                          key={perm}
+                          className="flex items-center gap-2 px-2 py-1 hover:bg-gray-100 rounded-md cursor-pointer"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={permissions.includes(perm)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setPermissions((p) => [...p, perm]);
+                              } else {
+                                setPermissions((p) =>
+                                  p.filter((x) => x !== perm)
+                                );
+                              }
+                            }}
+                            className="form-checkbox h-4 w-4 text-blue-600"
+                          />
+                          <span className="text-gray-700 text-sm">{perm}</span>
+                        </label>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
