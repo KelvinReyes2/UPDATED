@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   collection,
-  getDocs,
+  onSnapshot,
   query,
   orderBy,
   addDoc,
@@ -98,13 +98,15 @@ const QuotaSummary = () => {
   const [filteredData, setFilteredData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search] = useState("");
-  const [driverSearch, setDriverSearch] = useState(""); // Driver search state
+  const [driverSearch, setDriverSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const [userRole, setUserRole] = useState("User"); // Add state for user role
+  const [userRole, setUserRole] = useState("User");
+  const [generalTarget, setGeneralTarget] = useState(0);
+  const [users, setUsers] = useState({});
 
-  const [filterStartDate, setFilterStartDate] = useState(getTodayDate()); // Use helper function for today's date
-  const [filterEndDate, setFilterEndDate] = useState(""); // Add end date state
+  const [filterStartDate, setFilterStartDate] = useState(getTodayDate());
+  const [filterEndDate, setFilterEndDate] = useState("");
   const [stats, setStats] = useState({
     totalOfficers: 0,
     totalQuotaAssigned: 0,
@@ -135,19 +137,18 @@ const QuotaSummary = () => {
 
       if (userDocSnap.exists()) {
         const userData = userDocSnap.data();
-        setUserRole(userData.role || "User"); // Default to "User" if role not found
+        setUserRole(userData.role || "User");
       } else {
-        setUserRole("User"); // Default role if user document doesn't exist
+        setUserRole("User");
       }
     } catch (error) {
       console.error("Error fetching user role:", error);
-      setUserRole("User"); // Fallback to default role
+      setUserRole("User");
     }
   }, [currentUser?.uid]);
 
   // Function to map user roles to display roles for logging
   const mapRoleForLogging = (role) => {
-    // Map certain roles to "System Admin" for logging purposes
     const adminRoles = ["Admin"];
     return adminRoles.includes(role) ? "System Admin" : role;
   };
@@ -171,86 +172,108 @@ const QuotaSummary = () => {
     }
   };
 
-  const fetchQuotaData = useCallback(async () => {
-    setLoading(true);
+  // Real-time listener for quota targets
+  const setupQuotaTargetListener = useCallback(() => {
     try {
-      // Fetch all quota targets
-      const targetSnap = await getDocs(collection(db, "quotaTarget"));
-      let generalTarget = 0;
+      const targetRef = collection(db, "quotaTarget");
 
-      if (!targetSnap.empty) {
-        // pick the latest by timestamp
-        const latestDoc = targetSnap.docs.reduce((latest, doc) => {
-          const data = doc.data();
-          return !latest || data.timestamp.toDate() > latest.timestamp.toDate()
-            ? data
-            : latest;
-        }, null);
+      const unsubscribe = onSnapshot(targetRef, (querySnapshot) => {
+        if (!querySnapshot.empty) {
+          // Get the latest target by timestamp
+          const latestDoc = querySnapshot.docs.reduce((latest, doc) => {
+            const data = doc.data();
+            return !latest || data.timestamp.toDate() > latest.timestamp.toDate()
+              ? data
+              : latest;
+          }, null);
 
-        generalTarget = parseFloat(latestDoc.target) || 0;
-      }
+          setGeneralTarget(parseFloat(latestDoc.target) || 0);
+        } else {
+          setGeneralTarget(0);
+        }
+      }, (error) => {
+        console.error("Error listening to quota targets:", error);
+      });
 
-      // Fetch quota logs
-      const quotaRef = collection(db, "quota");
-      const q = query(quotaRef, orderBy("lastUpdated", "desc"));
-      const snapshot = await getDocs(q);
-
-      const data = await Promise.all(
-        snapshot.docs.map(async (doc) => {
-          const log = doc.data();
-          const driverName = await fetchDriverName(log.personnelID);
-
-          return {
-            id: doc.id,
-            target: generalTarget, // use the latest general quota
-            currentTotal: parseFloat(log.currentTotal) || 0,
-            isMet: log.isMet || false,
-            personnelID: log.personnelID || "N/A",
-            driverName, // Changed from officerName to driverName
-            updatedAt: log.lastUpdated?.toDate
-              ? log.lastUpdated.toDate()
-              : new Date(),
-            date: log.date?.toDate() || null, // Add date field from quota db
-          };
-        })
-      );
-
-      // Filter unique drivers
-      const uniqueData = data.filter(
-        (log, index, self) =>
-          index === self.findIndex((l) => l.personnelID === log.personnelID)
-      );
-
-      setQuotaData(uniqueData);
-      setFilteredData(uniqueData);
-    } catch (err) {
-      console.error("Error fetching quota data:", err);
-    } finally {
-      setLoading(false);
+      return unsubscribe;
+    } catch (error) {
+      console.error("Error setting up quota target listener:", error);
     }
   }, []);
 
-  const fetchDriverName = async (personnelID) => {
-    if (!personnelID) return "N/A";
+  // Real-time listener for users collection
+  const setupUsersListener = useCallback(() => {
     try {
-      const docRef = doc(db, "users", personnelID);
-      const docSnap = await getDoc(docRef);
+      const usersRef = collection(db, "users");
 
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        return `${data.firstName} ${data.lastName}`;
-      } else {
-        return personnelID; // fallback if user not found
-      }
-    } catch (err) {
-      console.error("Error fetching driver name:", err);
-      return personnelID;
+      const unsubscribe = onSnapshot(usersRef, (querySnapshot) => {
+        const usersMap = {};
+        querySnapshot.forEach((doc) => {
+          const data = doc.data();
+          usersMap[doc.id] = `${data.firstName} ${data.lastName}`;
+        });
+        setUsers(usersMap);
+      }, (error) => {
+        console.error("Error listening to users:", error);
+      });
+
+      return unsubscribe;
+    } catch (error) {
+      console.error("Error setting up users listener:", error);
     }
-  };
+  }, []);
+
+  // Real-time listener for quota data
+  const setupQuotaListener = useCallback(() => {
+    setLoading(true);
+    try {
+      const quotaRef = collection(db, "quota");
+      const q = query(quotaRef, orderBy("lastUpdated", "desc"));
+
+      const unsubscribe = onSnapshot(q, (querySnapshot) => {
+        const data = [];
+        querySnapshot.forEach((doc) => {
+          const log = doc.data();
+          const driverName = users[log.personnelID] || log.personnelID || "N/A";
+
+          data.push({
+            id: doc.id,
+            target: generalTarget,
+            currentTotal: parseFloat(log.currentTotal) || 0,
+            isMet: log.isMet || false,
+            personnelID: log.personnelID || "N/A",
+            driverName,
+            updatedAt: log.lastUpdated?.toDate
+              ? log.lastUpdated.toDate()
+              : new Date(),
+            date: log.date?.toDate() || null,
+          });
+        });
+
+        // Filter unique drivers
+        const uniqueData = data.filter(
+          (log, index, self) =>
+            index === self.findIndex((l) => l.personnelID === log.personnelID)
+        );
+
+        setQuotaData(uniqueData);
+        setFilteredData(uniqueData);
+        setLoading(false);
+      }, (error) => {
+        console.error("Error listening to quota data:", error);
+        setLoading(false);
+      });
+
+      return unsubscribe;
+    } catch (error) {
+      console.error("Error setting up quota listener:", error);
+      setLoading(false);
+    }
+  }, [generalTarget, users]);
 
   // Calculate stats based on filtered data
   const calculateFilteredStats = useCallback(() => {
-    const totalQuotaAssigned = quotaData.length > 0 ? quotaData[0].target : 0;
+    const totalQuotaAssigned = generalTarget;
     const quotaMet = filteredData.filter((d) => d.isMet).length;
     const quotaNotMet = filteredData.length - quotaMet;
 
@@ -260,7 +283,7 @@ const QuotaSummary = () => {
       quotaMet,
       quotaNotMet,
     });
-  }, [filteredData, quotaData]);
+  }, [filteredData, generalTarget]);
 
   // Pie chart data - based on filtered data
   const pieData = [
@@ -286,7 +309,6 @@ const QuotaSummary = () => {
         "Quota-Summary-Report"
       );
 
-      // Log the export activity (role will be mapped in logSystemActivity)
       await logSystemActivity("Exported Quota Summary Report to CSV", userName);
 
       setIsDropdownOpen(false);
@@ -305,7 +327,6 @@ const QuotaSummary = () => {
         userName
       );
 
-      // Log the export activity (role will be mapped in logSystemActivity)
       await logSystemActivity("Exported Quota Summary Report to PDF", userName);
 
       setIsDropdownOpen(false);
@@ -314,15 +335,35 @@ const QuotaSummary = () => {
     }
   };
 
-  // Fetch user role on component mount
-  useEffect(() => {
-    fetchUserRole();
-  }, [fetchUserRole]);
+ 
 
+  // Setup all real-time listeners
   useEffect(() => {
-    fetchQuotaData();
-  }, [fetchQuotaData]);
+    const initData = async () => {
+      await fetchUserRole();
+    };
+    initData();
 
+    const unsubscribeTarget = setupQuotaTargetListener();
+    const unsubscribeUsers = setupUsersListener();
+
+    return () => {
+      if (unsubscribeTarget) unsubscribeTarget();
+      if (unsubscribeUsers) unsubscribeUsers();
+    };
+  }, [setupQuotaTargetListener, setupUsersListener, fetchUserRole]);
+
+  // Setup quota listener after target and users are loaded
+  useEffect(() => {
+    if (generalTarget !== null && Object.keys(users).length > 0) {
+      const unsubscribeQuota = setupQuotaListener();
+      return () => {
+        if (unsubscribeQuota) unsubscribeQuota();
+      };
+    }
+  }, [generalTarget, users, setupQuotaListener]);
+
+  // Filter data whenever dependencies change
   useEffect(() => {
     let filtered = quotaData.filter((log) =>
       log.driverName.toLowerCase().includes(search.toLowerCase())
@@ -346,9 +387,8 @@ const QuotaSummary = () => {
     // Date range filtering using the date column from quota db
     if (filterStartDate || filterEndDate) {
       filtered = filtered.filter((log) => {
-        // Use the date column instead of updatedAt
         const logDate = log.date ? getDateFromTimestamp(log.date) : null;
-        if (!logDate) return false; // Skip records without date
+        if (!logDate) return false;
 
         // Convert log date to local date string in YYYY-MM-DD format
         const year = logDate.getFullYear();
@@ -652,7 +692,6 @@ const QuotaSummary = () => {
                   <Tooltip />
                   <Legend />
 
-                  {/* Bar = current total with labels */}
                   <Bar
                     dataKey="current"
                     fill="#406DAF"
@@ -668,7 +707,6 @@ const QuotaSummary = () => {
                     />
                   </Bar>
 
-                  {/* Broken line across chart for target quota */}
                   <ReferenceLine
                     y={
                       barData.length > 0

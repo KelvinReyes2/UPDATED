@@ -316,13 +316,6 @@ const DashboardAnalytics = () => {
     setFilteredTransactions(transactions);
   };
 
-  // Manual refresh function (optional - for user-triggered refresh)
-  const refreshData = () => {
-    // Since we're using real-time listeners, this just triggers a re-render
-    // The data is already up-to-date from the listeners
-    setCurrentPage(1); // Reset to first page
-  };
-
   // Pagination functions
   const handleNextPage = () => {
     if (currentPage * transactionsPerPage < filteredTransactions.length) {
@@ -604,13 +597,6 @@ const DashboardAnalytics = () => {
             className="px-4 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600 transition duration-200"
           >
             Reset Filters
-          </button>
-          <button
-            onClick={refreshData}
-            className="px-4 py-2 text-white rounded-md hover:opacity-90 transition duration-200"
-            style={{ backgroundColor: primaryColor }}
-          >
-            Refresh Data
           </button>
         </div>
       </div>

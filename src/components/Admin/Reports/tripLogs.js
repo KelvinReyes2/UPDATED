@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from "react";
 import {
   collection,
-  getDocs,
+  onSnapshot,
   query,
   where,
   addDoc,
@@ -27,16 +27,11 @@ const getTodayDate = () => {
 // Helper function to convert timestamp to Date object
 const getDateFromTimestamp = (timestamp) => {
   try {
-    // Handle Firestore Timestamp
     if (timestamp && typeof timestamp.toDate === "function") {
       return timestamp.toDate();
-    }
-    // Handle timestamp object with seconds property (Firestore)
-    else if (timestamp && timestamp.seconds) {
+    } else if (timestamp && timestamp.seconds) {
       return new Date(timestamp.seconds * 1000);
-    }
-    // Handle JavaScript Date
-    else if (timestamp instanceof Date) {
+    } else if (timestamp instanceof Date) {
       return timestamp;
     } else if (typeof timestamp === "string" && !isNaN(Date.parse(timestamp))) {
       return new Date(timestamp);
@@ -54,14 +49,13 @@ const TripLogs = () => {
   const [transactions, setTransactions] = useState([]);
   const [routes, setRoutes] = useState([]);
   const [selectedRoute, setSelectedRoute] = useState("");
-  const [driverSearch, setDriverSearch] = useState(""); // Driver search state
-  // Set default start date to today using the helper function
+  const [driverSearch, setDriverSearch] = useState("");
   const [selectedStartDate, setSelectedStartDate] = useState(getTodayDate());
   const [selectedEndDate, setSelectedEndDate] = useState("");
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState(null);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const [userRole, setUserRole] = useState("User"); // Add state for user role
+  const [userRole, setUserRole] = useState("User");
 
   const primaryColor = "#364C6E";
 
@@ -83,19 +77,18 @@ const TripLogs = () => {
 
       if (userDocSnap.exists()) {
         const userData = userDocSnap.data();
-        setUserRole(userData.role || "User"); // Default to "User" if role not found
+        setUserRole(userData.role || "User");
       } else {
-        setUserRole("User"); // Default role if user document doesn't exist
+        setUserRole("User");
       }
     } catch (error) {
       console.error("Error fetching user role:", error);
-      setUserRole("User"); // Fallback to default role
+      setUserRole("User");
     }
   }, [currentUser?.uid]);
 
   // Function to map user roles to display roles for logging
   const mapRoleForLogging = (role) => {
-    // Map certain roles to "System Admin" for logging purposes
     const adminRoles = ["Admin"];
     return adminRoles.includes(role) ? "System Admin" : role;
   };
@@ -119,9 +112,8 @@ const TripLogs = () => {
     }
   };
 
-  // Fetch users with role Driver or Reliever, status Active
-  const fetchUsers = async () => {
-    setLoading(true);
+  // Real-time users listener
+  const setupUsersListener = useCallback(() => {
     try {
       const usersRef = collection(db, "users");
       const q = query(
@@ -129,107 +121,116 @@ const TripLogs = () => {
         where("role", "in", ["Driver", "Reliever"]),
         where("status", "==", "Active")
       );
-      const querySnapshot = await getDocs(q);
-      const userData = [];
-      querySnapshot.forEach((doc) => {
-        const data = doc.data();
-        userData.push({
-          id: doc.id,
-          displayName: `${data.firstName || ""} ${data.lastName || ""}`.trim(),
-          role: data.role,
-          status: data.status,
+
+      const unsubscribe = onSnapshot(q, (querySnapshot) => {
+        const userData = [];
+        querySnapshot.forEach((doc) => {
+          const data = doc.data();
+          userData.push({
+            id: doc.id,
+            displayName: `${data.firstName || ""} ${data.lastName || ""}`.trim(),
+            role: data.role,
+            status: data.status,
+          });
         });
+        setUsers(userData);
+        setLoading(false);
+      }, (error) => {
+        console.error("Error listening to users:", error);
+        setErr("Failed to load users");
+        setLoading(false);
       });
-      setUsers(userData);
+
+      return unsubscribe;
     } catch (error) {
-      console.error("Error fetching users:", error);
-      setErr("Failed to load users");
-    } finally {
+      console.error("Error setting up users listener:", error);
       setLoading(false);
     }
-  };
+  }, []);
 
-  // Fetch all non-voided transactions
-  const fetchTransactions = async () => {
+  // Real-time transactions listener
+  const setupTransactionsListener = useCallback(() => {
     try {
       const transactionsRef = collection(db, "transactions");
       const q = query(transactionsRef, where("isVoided", "==", false));
-      const querySnapshot = await getDocs(q);
-      const transactionData = [];
 
-      querySnapshot.forEach((doc) => {
-        const data = doc.data();
-        transactionData.push({
-          id: doc.id, // Add transaction ID for distinct counting
-          driverUID: data.driverUID,
-          farePrice: data.farePrice || 0,
-          paymentMethod: data.paymentMethod || "",
-          route: data.route || "",
-          tripCount: data.tripCount || 0,
-          timestamp: data.timestamp?.toDate() || null, // Changed from date to timestamp
+      const unsubscribe = onSnapshot(q, (querySnapshot) => {
+        const transactionData = [];
+        querySnapshot.forEach((doc) => {
+          const data = doc.data();
+          transactionData.push({
+            id: doc.id,
+            driverUID: data.driverUID,
+            farePrice: data.farePrice || 0,
+            paymentMethod: data.paymentMethod || "",
+            route: data.route || "",
+            tripCount: data.tripCount || 0,
+            timestamp: data.timestamp?.toDate
+              ? data.timestamp.toDate()
+              : data.timestamp || null,
+          });
         });
+        setTransactions(transactionData);
+      }, (error) => {
+        console.error("Error listening to transactions:", error);
+        setErr("Failed to load transactions");
       });
 
-      setTransactions(transactionData);
+      return unsubscribe;
     } catch (error) {
-      console.error("Error fetching transactions:", error);
-      setErr("Failed to load transactions");
+      console.error("Error setting up transactions listener:", error);
     }
-  };
+  }, []);
 
-  // Fetch all routes
-  const fetchRoutes = async () => {
+  // Real-time routes listener
+  const setupRoutesListener = useCallback(() => {
     try {
       const routesRef = collection(db, "routes");
-      const querySnapshot = await getDocs(routesRef);
-      const routeData = [];
-      querySnapshot.forEach((doc) => {
-        const data = doc.data();
-        if (data.Route) routeData.push(data.Route);
+
+      const unsubscribe = onSnapshot(routesRef, (querySnapshot) => {
+        const routeData = [];
+        querySnapshot.forEach((doc) => {
+          const data = doc.data();
+          if (data.Route) routeData.push(data.Route);
+        });
+        const uniqueRoutes = [...new Set(routeData)];
+        setRoutes(uniqueRoutes);
+      }, (error) => {
+        console.error("Error listening to routes:", error);
+        setErr("Failed to load routes");
       });
 
-      const uniqueRoutes = [...new Set(routeData)];
-      setRoutes(uniqueRoutes);
+      return unsubscribe;
     } catch (error) {
-      console.error("Error fetching routes:", error);
-      setErr("Failed to load routes");
+      console.error("Error setting up routes listener:", error);
     }
-  };
+  }, []);
 
-  // Filter transactions by date range using the same logic as ActivityLogSuper
+  // Filter transactions by date range
   const filterTransactionsByDate = (transactions) => {
     return transactions.filter((transaction) => {
-      // Date filter
       let matchesDateFilter = true;
       if (selectedStartDate || selectedEndDate) {
         const logDate = getDateFromTimestamp(transaction.timestamp);
         if (logDate) {
-          // Convert log date to local date string in YYYY-MM-DD format
           const year = logDate.getFullYear();
           const month = String(logDate.getMonth() + 1).padStart(2, "0");
           const day = String(logDate.getDate()).padStart(2, "0");
           const logDateString = `${year}-${month}-${day}`;
 
-          // If only start date is provided, show logs from that specific date only
           if (selectedStartDate && !selectedEndDate) {
             matchesDateFilter = logDateString === selectedStartDate;
-          }
-          // If both dates are provided, show logs in the range
-          else if (selectedStartDate && selectedEndDate) {
+          } else if (selectedStartDate && selectedEndDate) {
             matchesDateFilter =
               logDateString >= selectedStartDate &&
               logDateString <= selectedEndDate;
-          }
-          // If only end date is provided (unlikely but handle it)
-          else if (!selectedStartDate && selectedEndDate) {
+          } else if (!selectedStartDate && selectedEndDate) {
             matchesDateFilter = logDateString <= selectedEndDate;
           }
         } else {
-          // If timestamp is invalid/null, exclude it when date filters are applied
           matchesDateFilter = false;
         }
       }
-
       return matchesDateFilter;
     });
   };
@@ -259,16 +260,14 @@ const TripLogs = () => {
         (selectedRoute ? transaction.route === selectedRoute : true)
     );
 
-    // Get distinct tripCount values (not sum, not count of transactions)
     const distinctTripCounts = [
       ...new Set(filteredTransactions.map((t) => t.tripCount)),
     ];
 
-    // If there are multiple distinct tripCount values, return the maximum
     return distinctTripCounts.length > 0 ? Math.max(...distinctTripCounts) : 0;
   };
 
-  // Filter users who have transactions on selected route (if any) and by driver search
+  // Filter users who have transactions on selected route and by driver search
   const getFilteredUsers = () => {
     let filtered = selectedRoute
       ? users.filter((user) =>
@@ -280,7 +279,6 @@ const TripLogs = () => {
         )
       : users;
 
-    // Filter by driver search
     if (driverSearch.trim()) {
       const searchQuery = driverSearch.trim().toLowerCase();
       filtered = filtered.filter((user) => {
@@ -362,7 +360,7 @@ const TripLogs = () => {
 
   const filteredUsers = getFilteredUsers();
 
-  // Enhanced export functions with role mapping
+  // Export functions
   const handleExportCSV = async () => {
     try {
       exportToCSV(
@@ -373,9 +371,7 @@ const TripLogs = () => {
         "Trip-Logs-Report"
       );
 
-      // Log the export activity (role will be mapped in logSystemActivity)
       await logSystemActivity("Exported Trip Logs Report to CSV", userName);
-
       setIsDropdownOpen(false);
     } catch (error) {
       console.error("Error during CSV export:", error);
@@ -392,24 +388,30 @@ const TripLogs = () => {
         userName
       );
 
-      // Log the export activity (role will be mapped in logSystemActivity)
       await logSystemActivity("Exported Trip Logs Report to PDF", userName);
-
       setIsDropdownOpen(false);
     } catch (error) {
       console.error("Error during PDF export:", error);
     }
   };
 
+  // Setup real-time listeners
   useEffect(() => {
-    fetchUserRole();
-  }, [fetchUserRole]);
+    const initData = async () => {
+      await fetchUserRole();
+    };
+    initData();
 
-  useEffect(() => {
-    fetchUsers();
-    fetchTransactions();
-    fetchRoutes();
-  }, []);
+    const unsubscribeUsers = setupUsersListener();
+    const unsubscribeTransactions = setupTransactionsListener();
+    const unsubscribeRoutes = setupRoutesListener();
+
+    return () => {
+      if (unsubscribeUsers) unsubscribeUsers();
+      if (unsubscribeTransactions) unsubscribeTransactions();
+      if (unsubscribeRoutes) unsubscribeRoutes();
+    };
+  }, [setupUsersListener, setupTransactionsListener, setupRoutesListener, fetchUserRole]);
 
   const toggleDropdown = () => setIsDropdownOpen(!isDropdownOpen);
 

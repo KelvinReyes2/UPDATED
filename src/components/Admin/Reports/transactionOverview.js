@@ -455,16 +455,6 @@ const TransactionOverview = () => {
     setFilteredTransactions(transactions);
   };
 
-  // Manual refresh function (optional - for user-triggered refresh)
-  const refreshAllData = () => {
-    // Since we're using real-time listeners, this just triggers a re-render
-    // The data is already up-to-date from the listeners
-    setCurrentPage(1); // Reset to first page
-    
-    // Log the refresh activity
-    logSystemActivity("Refreshed Transaction Overview Data", userName);
-  };
-
   // Pagination functions
   const handleNextPage = () => {
     if (currentPage * transactionsPerPage < filteredTransactions.length) {
@@ -778,13 +768,6 @@ const TransactionOverview = () => {
             className="px-4 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600 transition duration-200"
           >
             Reset Filters
-          </button>
-          <button
-            onClick={refreshAllData}
-            className="px-4 py-2 text-white rounded-md hover:opacity-90 transition duration-200"
-            style={{ backgroundColor: primaryColor }}
-          >
-            Refresh Data
           </button>
 
           {/* Export Button */}
