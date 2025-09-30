@@ -75,6 +75,35 @@ export default function AdminManagementSuper() {
 
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [user, setCurrentUser] = useState(null);
+  const [userRole, setUserRole] = useState("User");
+
+  // Function to map user roles to display roles for logging
+  const ROLE_MAPPING = {
+    Admin: "System Admin",
+    Super: "Super Admin",
+  };
+
+  const mapRoleForLogging = (role) => {
+    return ROLE_MAPPING[role] || null;
+  };
+
+  // Function to log system activities with mapped role
+  const logSystemActivity = async (activity, performedBy, role = null) => {
+    try {
+      const actualRole = role || userRole;
+      const displayRole = mapRoleForLogging(actualRole);
+
+      await addDoc(collection(db, "systemLogs"), {
+        activity,
+        performedBy,
+        role: displayRole,
+        timestamp: serverTimestamp(),
+      });
+      console.log("System activity logged successfully");
+    } catch (error) {
+      console.error("Error logging system activity:", error);
+    }
+  };
 
   const toggleDropdown = () => {
     setIsDropdownOpen((prev) => !prev);
@@ -144,7 +173,9 @@ export default function AdminManagementSuper() {
           const docSnap = await getDoc(docRef);
 
           if (docSnap.exists()) {
-            setCurrentUser(docSnap.data());
+            const userData = docSnap.data();
+            setCurrentUser(userData);
+            setUserRole(userData.role || "User");
           }
         }
       } catch (err) {
@@ -224,10 +255,13 @@ export default function AdminManagementSuper() {
 
     if (user) {
       try {
-        await saveSystemLog(
+        const userFullName = user.firstName && user.lastName 
+          ? `${user.firstName} ${user.lastName}`.trim()
+          : currentUser?.email || "Unknown User";
+
+        await logSystemActivity(
           "Exported Admin Management Report to CSV",
-          `${user.firstName} ${user.lastName}`,
-          "Super Admin"
+          userFullName
         );
         console.log("Export log saved successfully.");
       } catch (err) {
@@ -251,10 +285,13 @@ export default function AdminManagementSuper() {
 
     if (user) {
       try {
-        await saveSystemLog(
-          "Exported Admin Management Report to CSV",
-          `${user.firstName} ${user.lastName}`,
-          "Super Admin"
+        const userFullName = user.firstName && user.lastName 
+          ? `${user.firstName} ${user.lastName}`.trim()
+          : currentUser?.email || "Unknown User";
+
+        await logSystemActivity(
+          "Exported Admin Management Report to PDF",
+          userFullName
         );
         console.log("Export log saved successfully.");
       } catch (err) {
@@ -414,20 +451,6 @@ export default function AdminManagementSuper() {
     }
   };
 
-  const saveSystemLog = async (activity, performedBy, role) => {
-    try {
-      await addDoc(collection(db, "systemLogs"), {
-        activity,
-        performedBy,
-        role,
-        timestamp: serverTimestamp(),
-      });
-      console.log("System log saved!");
-    } catch (err) {
-      console.error("Error saving log:", err);
-    }
-  };
-
   // Create auth user then add Firestore profile
   const saveAdmin = async () => {
     const e = {};
@@ -485,10 +508,13 @@ export default function AdminManagementSuper() {
       setTimeout(() => setShowSuccessToast(false), 3000);
 
       if (user) {
-        await saveSystemLog(
-          "Added a new Admin",
-          `${user.firstName} ${user.lastName}`,
-          user.role
+        const userFullName = user.firstName && user.lastName 
+          ? `${user.firstName} ${user.lastName}`.trim()
+          : currentUser?.email || "Unknown User";
+
+        await logSystemActivity(
+          `Added new admin: ${form.firstName.trim()} ${form.lastName.trim()}`,
+          userFullName
         );
       }
 
@@ -576,10 +602,13 @@ export default function AdminManagementSuper() {
       setTimeout(() => setShowSuccessToast(false), 3000);
 
       if (user) {
-        await saveSystemLog(
-          "Updated Admin's details",
-          `${user.firstName} ${user.lastName}`,
-          user.role
+        const userFullName = user.firstName && user.lastName 
+          ? `${user.firstName} ${user.lastName}`.trim()
+          : currentUser?.email || "Unknown User";
+
+        await logSystemActivity(
+          `Updated admin details for: ${edit.firstName.trim()} ${edit.lastName.trim()}`,
+          userFullName
         );
       }
     } catch (err) {

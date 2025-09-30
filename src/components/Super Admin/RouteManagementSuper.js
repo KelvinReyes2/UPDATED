@@ -1,415 +1,476 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import { Outlet, useLocation } from "react-router-dom";
 import DataTable from "react-data-table-component";
-
+import { FaEdit, FaPlus } from "react-icons/fa";
+import "jspdf-autotable";
 import { db } from "../../firebase";
+import { getAuth } from "firebase/auth";
 import {
   collection,
   onSnapshot,
   doc,
   setDoc,
-  getDoc,
-  query,
-  where,
   addDoc,
   serverTimestamp,
-  getDocs,
+  getDoc,
 } from "firebase/firestore";
 import { exportToCSV, exportToPDF } from "../functions/exportFunctions";
-import { getAuth } from "firebase/auth";
 
-export default function RouteManagementSuper() {
-  const auth = getAuth();
-  const currentUser = auth.currentUser;
-
-  const primaryColor = "#364C6E";
-
-  // -------------------- ROUTES DATA --------------------
-  const [rows, setRows] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState(null);
-
-  // UI state
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
-  const [routeFilter, setRouteFilter] = useState("");
-  const [barangayFilter, setBarangayFilter] = useState("");
-  const [particularFilter, setParticularFilter] = useState("");
-
-  // Add route modal
-  const [isAddOpen, setIsAddOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [maxRouteId, setMaxRouteId] = useState(0);
-  const [form, setForm] = useState({
-    Route: "",
-    Barangay: "",
-    Particular: "",
-    KM: "",
-    Status: "Active",
-  });
-
+export default function VehicleManagement() {
+  const [showSuccessToast, setShowSuccessToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState("");
+  const location = useLocation();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [units, setUnits] = useState([]);
+  const [userRole, setUserRole] = useState("User");
+
+  // New states for add unit functionality
+  const [isAddingUnit, setIsAddingUnit] = useState(false);
+  const [newUnitText, setNewUnitText] = useState("");
+  const [savingUnit, setSavingUnit] = useState(false);
 
   const toggleDropdown = () => {
     setIsDropdownOpen((prev) => !prev);
   };
 
-  // Field-level errors (Add Route)
+  const auth = getAuth();
+  const currentUser = auth.currentUser;
+  const userName =
+    currentUser?.displayName || currentUser?.email || "Unknown User";
+
+  // Function to fetch user role
+  const fetchUserRole = useCallback(async () => {
+    if (!currentUser?.uid) {
+      setUserRole("Guest");
+      return;
+    }
+
+    try {
+      const userDocRef = doc(db, "users", currentUser.uid);
+      const userDocSnap = await getDoc(userDocRef);
+
+      if (userDocSnap.exists()) {
+        const userData = userDocSnap.data();
+        setUserRole(userData.role || "User");
+      } else {
+        setUserRole("User");
+      }
+    } catch (error) {
+      console.error("Error fetching user role:", error);
+      setUserRole("User");
+    }
+  }, [currentUser?.uid]);
+
+  // Function to map user roles to display roles for logging
+  const mapRoleForLogging = (role) => {
+    return ROLE_MAPPING[role] || null;
+  };
+
+  // Function to log system activities with mapped role
+  const logSystemActivity = async (activity, performedBy, role = null) => {
+    try {
+      const actualRole = role || userRole;
+      const displayRole = mapRoleForLogging(actualRole);
+
+      await addDoc(collection(db, "systemLogs"), {
+        activity,
+        performedBy,
+        role: displayRole,
+        timestamp: serverTimestamp(),
+      });
+      console.log("System activity logged successfully");
+    } catch (error) {
+      console.error("Error logging system activity:", error);
+    }
+  };
+
+  // Function to generate next unit ID
+  const generateNextUnitId = () => {
+    if (units.length === 0) return "VAB_0001";
+    
+    const existingNumbers = units
+      .map(unit => {
+        const match = unit.id.match(/VAB_(\d+)/);
+        return match ? parseInt(match[1], 10) : 0;
+      })
+      .filter(num => !isNaN(num));
+    
+    const maxNumber = existingNumbers.length > 0 ? Math.max(...existingNumbers) : 0;
+    const nextNumber = maxNumber + 1;
+    
+    return `VAB_${nextNumber.toString().padStart(4, '0')}`;
+  };
+
+  // Function to save new unit
+  const saveNewUnit = async () => {
+    if (!newUnitText.trim()) return;
+
+    setSavingUnit(true);
+    try {
+      // Use the exact text input by user as the unit ID
+      const unitId = newUnitText.trim().toUpperCase();
+      
+      // Check if unit already exists
+      const unitDocRef = doc(db, "unit", unitId);
+      const unitSnap = await getDoc(unitDocRef);
+      
+      if (unitSnap.exists()) {
+        alert("This unit ID already exists. Please use a different ID.");
+        setSavingUnit(false);
+        return;
+      }
+
+      await setDoc(unitDocRef, {
+        serialNo: "SE-00035", // Default serial number
+        status: "Available",
+        unitHolder: null,
+        vehicleID: "",
+        unit: unitId // Store exactly what user inputs
+      });
+
+      await logSystemActivity(
+        `Added new unit: ${unitId}`,
+        userName
+      );
+
+      setToastMessage("New unit added successfully!");
+      setShowSuccessToast(true);
+      setTimeout(() => setShowSuccessToast(false), 3000);
+      
+      // Reset states
+      setIsAddingUnit(false);
+      setNewUnitText("");
+      
+      // Update form to use the new unit
+      setForm(prev => ({ ...prev, unit: unitId }));
+    } catch (error) {
+      console.error("Error saving unit:", error);
+      alert("Failed to save unit. Please try again.");
+    } finally {
+      setSavingUnit(false);
+    }
+  };
+
+  // Function to cancel adding unit
+  const cancelAddUnit = () => {
+    setIsAddingUnit(false);
+    setNewUnitText("");
+  };
+
+  useEffect(() => {
+    const unsubUnits = onSnapshot(
+      collection(db, "unit"),
+      (snap) => {
+        const temp = [];
+        snap.forEach((d) => {
+          const data = d.data();
+          if (data) {
+            temp.push({
+              id: d.id,
+              vehicleID: data.vehicleID || "",
+              status: data.status || "Available",
+              serialNo: data.serialNo || "",
+            });
+          }
+        });
+
+        if (edit) {
+          setUnits(temp.filter((u) => !u.vehicleID || u.id === edit.unit));
+        } else {
+          setUnits(temp.filter((u) => !u.vehicleID));
+        }
+      },
+      (error) => {
+        console.error("Error loading units:", error);
+      }
+    );
+
+    return () => unsubUnits();
+  }, []);
+
+  // Add this near the top of your component, after imports
+  const ROLE_MAPPING = {
+    Admin: "System Admin",
+  };
+
+  const primaryColor = "#364C6E";
+  const isVehiclePage = location.pathname === "/vehicleManagement";
+
+  const [vehicles, setVehicles] = useState([]);
+  const [routes, setRoutes] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [err] = useState(null);
+
+  const [search, setSearch] = useState("");
+  const [routeFilter, setRouteFilter] = useState("");
+
+  const [isAddOpen, setIsAddOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({
+    vehicleID: "",
+    unit: "",
+    serialNo: "",
+    fuel: "",
+    routeId: "",
+    status: "Active",
+  });
   const [errors, setErrors] = useState({});
 
-  const [showAddToast, setShowAddToast] = useState(false);
-  const [showEditToast, setShowEditToast] = useState(false);
-
-  // View/Edit modal
   const [viewing, setViewing] = useState(null);
   const [edit, setEdit] = useState(null);
   const [savingEdit, setSavingEdit] = useState(false);
 
-  const [user, setCurrentUser] = useState(null);
+  const toMillis = (v) => {
+    if (!v) return 0;
+    if (typeof v === "string") {
+      const t = Date.parse(v);
+      return Number.isNaN(t) ? 0 : t;
+    }
+    if (v?.seconds)
+      return v.seconds * 1000 + Math.floor((v.nanoseconds || 0) / 1e6);
+    return 0;
+  };
+
+  // Fetch user role on component mount
+  useEffect(() => {
+    fetchUserRole();
+  }, [fetchUserRole]);
 
   useEffect(() => {
+    if (!isVehiclePage) return;
+
     const unsub = onSnapshot(
-      collection(db, "routes"),
+      collection(db, "vehicle"),
       (snap) => {
-        const items = [];
-        let maxId = 0;
-        snap.forEach((d) => {
-          const x = d.data() || {};
-          const routeId = Number(x.routeId ?? d.id ?? 0) || 0;
-          if (routeId > maxId) maxId = routeId;
-          items.push({
-            id: d.id,
-            routeId,
-            Route: x.Route ?? "",
-            Barangay: x.Barangay ?? "",
-            Particular: x.Particular ?? "",
-            KM: Number(x.KM ?? 0),
-            Status: x.Status ?? x.isActive ?? "Active",
+        try {
+          const temp = [];
+          snap.forEach((d) => {
+            const data = d.data();
+            if (data) {
+              temp.push({
+                id: d.id,
+                vehicleID: data.vehicleID || "",
+                unit: data.unit || "",
+                serialNo: data.serialNo || "",
+                fuel: data.fuel || "",
+                routeId: data.routeId || "",
+                status: data.status || "Active",
+                createdAt: toMillis(data.createdAt),
+              });
+            }
           });
-        });
-        items.sort((a, b) => a.routeId - b.routeId);
-        setRows(items);
-        setMaxRouteId(maxId);
-        setLoading(false);
+          temp.sort((a, b) => a.createdAt - b.createdAt);
+          setVehicles(temp);
+          setLoading(false);
+        } catch (error) {
+          console.error("Error processing vehicles:", error);
+          setLoading(false);
+        }
       },
-      (e) => {
-        setErr(e.message || "Failed to load routes");
+      (error) => {
+        console.error("Error loading vehicles:", error);
         setLoading(false);
       }
     );
-    return () => unsub();
-  }, []);
 
-  useEffect(() => {
-    const fetchCurrentUser = async () => {
-      try {
-        const user = auth.currentUser;
-
-        if (user) {
-          const docRef = doc(db, "users", user.uid);
-          const docSnap = await getDoc(docRef);
-
-          if (docSnap.exists()) {
-            setCurrentUser(docSnap.data());
-          }
+    const routeUnsub = onSnapshot(
+      collection(db, "routes"),
+      (snap) => {
+        try {
+          const temp = [];
+          snap.forEach((d) => {
+            const data = d.data();
+            if (data && data.Route) {
+              temp.push({
+                id: d.id,
+                route: data.Route,
+              });
+            }
+          });
+          const uniqueRoutes = Array.from(
+            new Set(temp.map((route) => route.route))
+          ).map((routeName) => temp.find((route) => route.route === routeName));
+          setRoutes(uniqueRoutes);
+        } catch (error) {
+          console.error("Error processing routes:", error);
         }
-      } catch (err) {
-        console.error("Error fetching current user:", err);
+      },
+      (error) => {
+        console.error("Error loading routes:", error);
       }
+    );
+
+    return () => {
+      unsub();
+      routeUnsub();
     };
+  }, [isVehiclePage]);
 
-    fetchCurrentUser();
-  }, []);
-
-  // Filter dropdown options
-  const routeOptions = useMemo(
-    () => Array.from(new Set(rows.map((r) => r.Route).filter(Boolean))).sort(),
-    [rows]
-  );
-  const barangayOptions = useMemo(() => {
-    // Filter the rows to get barangays that match the selected route
-    return Array.from(
-      new Set(
-        rows
-          .filter((r) => !routeFilter || r.Route === routeFilter) // Filter rows by selected route
-          .map((r) => r.Barangay) // Get the Barangay from filtered rows
-          .filter(Boolean) // Remove any empty or undefined barangays
-      )
-    ).sort(); // Sort the barangays alphabetically
-  }, [rows, routeFilter]);
-  const particularOptions = useMemo(() => {
-    // Filter rows to get particulars that match both the selected route and barangay
-    return Array.from(
-      new Set(
-        rows
-          .filter(
-            (r) =>
-              (!routeFilter || r.Route === routeFilter) && // Filter by selected route
-              (!barangayFilter || r.Barangay === barangayFilter) // Filter by selected barangay
-          )
-          .map((r) => r.Particular) // Get the Particular from filtered rows
-          .filter(Boolean) // Remove any empty or undefined particulars
-      )
-    ).sort(); // Sort the particulars alphabetically
-  }, [rows, routeFilter, barangayFilter]); // Recalculate when rows, routeFilter, or barangayFilter changes
-
-  // Apply filters + search
   const filtered = useMemo(() => {
-    const s = search.trim().toLowerCase(); // Normalize the search string
-    return rows.filter((r) => {
-      const text =
-        `${r.routeId} ${r.Route} ${r.Barangay} ${r.Particular} ${r.KM} ${r.Status}`.toLowerCase();
+    const q = search.trim().toLowerCase();
+    return vehicles.filter((vehicle) => {
+      const route = routes.find((r) => r.id === vehicle.routeId);
+      const routeName = route ? route.route : "";
+      const searchText =
+        `${vehicle.vehicleID} ${vehicle.unit} ${vehicle.serialNo} ${vehicle.fuel} ${routeName} ${vehicle.status}`.toLowerCase();
+      const matchesSearch = !q || searchText.includes(q);
+      const matchesRouteFilter = !routeFilter || routeName === routeFilter;
 
-      // Check if the search term matches any text in the row
-      const matchesSearch = !s || text.includes(s);
-
-      // Apply each filter condition dynamically
-      const matchesStatus = !statusFilter || r.Status === statusFilter;
-      const matchesRoute = !routeFilter || r.Route === routeFilter;
-      const matchesBarangay = !barangayFilter || r.Barangay === barangayFilter;
-      const matchesParticular =
-        !particularFilter || r.Particular === particularFilter;
-
-      // Final check for all filters
-      return (
-        matchesSearch &&
-        matchesStatus &&
-        matchesRoute &&
-        matchesBarangay &&
-        matchesParticular
-      );
+      return matchesSearch && matchesRouteFilter;
     });
-  }, [
-    rows,
-    search,
-    statusFilter,
-    routeFilter,
-    barangayFilter,
-    particularFilter,
+  }, [vehicles, routes, search, routeFilter]);
+
+  const filteredWithRowNumber = useMemo(() => {
+    return filtered.map((r, i) => {
+      const route = routes.find((route) => route.id === r.routeId);
+      return {
+        ...r,
+        _row: i + 1,
+        routeName: route ? route.route : "No Route",
+      };
+    });
+  }, [filtered, routes]);
+
+  const headers = ["Vehicle ID", "Unit", "Serial No", "Fuel", "Route", "Status"];
+  const rows = filteredWithRowNumber.map((item) => [
+    item.id,
+    item.unit,
+    item.serialNo,
+    item.fuel,
+    item.routeName,
+    item.status,
   ]);
 
-  // ---- formatting helpers ----
-  const nfInt = useMemo(() => new Intl.NumberFormat("en-PH"), []);
+  // Enhanced export functions with role mapping and system logging
+  const handleExportToCSV = async () => {
+    try {
+      await exportToCSV(
+        headers,
+        rows,
+        "Vehicle-Management-Report",
+        "Vehicle-Management-Report.csv",
+        userName
+      );
 
-  const Numeric = ({ children }) => (
-    <span
-      style={{ fontVariantNumeric: "tabular-nums" }}
-      className="inline-flex w-full justify-end"
-    >
-      {children}
-    </span>
-  );
+      await logSystemActivity("Printed Vehicle Report", userName);
+
+      setIsDropdownOpen(false);
+    } catch (error) {
+      console.error("Error exporting to CSV:", error);
+    }
+  };
+
+  const handleExportToPDF = async () => {
+    try {
+      await exportToPDF(
+        headers,
+        rows,
+        "Vehicle-Management-Report",
+        "Vehicle-Management-Report.pdf",
+        userName
+      );
+
+      await logSystemActivity("Printed Vehicle Report", userName);
+
+      setIsDropdownOpen(false);
+    } catch (error) {
+      console.error("Error exporting to PDF:", error);
+    }
+  };
 
   const StatusBadge = ({ value }) => {
     const isActive = (value || "").toLowerCase() === "active";
     return (
       <span
-        className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${
-          isActive
-            ? "bg-green-100 text-green-700 border border-green-200"
-            : "bg-gray-100 text-gray-700 border border-gray-200"
-        }`}
+        className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${isActive ? "bg-green-100 text-green-700 border border-green-200" : "bg-gray-100 text-gray-700 border border-gray-200"}`}
       >
         <span
-          className={`mr-1.5 inline-block h-1.5 w-1.5 rounded-full ${
-            isActive ? "bg-green-500" : "bg-gray-400"
-          }`}
+          className={`mr-1.5 inline-block h-1.5 w-1.5 rounded-full ${isActive ? "bg-green-500" : "bg-gray-400"}`}
         />
-        {isActive ? "Active" : "Inactive"}
+        {isActive ? "Active" : value || "Inactive"}
       </span>
     );
   };
 
-  const saveSystemLog = async (activity, performedBy, role) => {
-    try {
-      await addDoc(collection(db, "systemLogs"), {
-        activity,
-        performedBy,
-        role,
-        timestamp: serverTimestamp(),
-      });
-      console.log("System log saved!");
-    } catch (err) {
-      console.error("Error saving log:", err);
-    }
-  };
-
-  const headers = [
-    "Route ID",
-    "Route",
-    "Barangay",
-    "Particular",
-    "KM",
-    "Status",
-  ];
-  const exportRows = filtered.map((r) => [
-    r.routeId,
-    r.Route,
-    r.Barangay,
-    r.Particular,
-    r.KM,
-    r.Status,
-  ]);
-  const handleExportToCSV = async () => {
-    if (!filtered || filtered.length === 0) {
-      alert("No data to export.");
-      return;
-    }
-    exportToCSV(
-      columns,
-      exportRows,
-      "Route_Management.csv",
-      currentUser.email || "Unknown",
-      "Route Management"
-    );
-
-    if (user) {
-      try {
-        await saveSystemLog(
-          "Exported Route Management Report to CSV",
-          `${user.firstName} ${user.lastName}`,
-          "Super Admin"
-        );
-        console.log("Export log saved successfully.");
-      } catch (err) {
-        console.error("Failed to save export log:", err);
-      }
-    }
-  };
-
-  const handleExportToPDF = async () => {
-    if (!filtered || filtered.length === 0) {
-      alert("No data to export.");
-      return;
-    }
-    exportToPDF(
-      headers,
-      exportRows,
-      "Route Management",
-      "Route_Management.pdf",
-      currentUser.email || "Unknown"
-    );
-
-    if (user) {
-      try {
-        await saveSystemLog(
-          "Exported Route Management Report to PDF",
-          `${user.firstName} ${user.lastName}`,
-          "Super Admin"
-        );
-        console.log("Export log saved successfully.");
-      } catch (err) {
-        console.error("Failed to save export log:", err);
-      }
-    }
-  };
-
-  // -------------------- TABLE COLUMNS --------------------
   const columns = [
     {
-      name: "Route ID",
-      selector: (r) => r.routeId,
+      name: "Vehicle ID",
+      selector: (r) => r.id,
       sortable: true,
-      right: true,
-      width: "130px",
-      cell: (r) => <Numeric>{nfInt.format(r.routeId)}</Numeric>,
+      cell: (r) => (
+        <div className="truncate" title={r.id}>
+          {r.id}
+        </div>
+      ),
+    },
+    {
+      name: "Unit",
+      selector: (r) => r.unit,
+      sortable: true,
+      cell: (r) => (
+        <div className="truncate" title={r.unit}>
+          {r.unit}
+        </div>
+      ),
+    },
+    {
+      name: "Serial No",
+      selector: (r) => r.serialNo,
+      sortable: true,
+      cell: (r) => (
+        <div className="truncate" title={r.serialNo}>
+          {r.serialNo}
+        </div>
+      ),
+    },
+    {
+      name: "Fuel",
+      selector: (r) => r.fuel,
+      sortable: true,
+      cell: (r) => (
+        <div className="truncate" title={r.fuel}>
+          {r.fuel}
+        </div>
+      ),
     },
     {
       name: "Route",
-      selector: (r) => r.Route,
+      selector: (r) => {
+        const route = routes.find((route) => route.id === r.routeId);
+        return route ? route.route : "";
+      },
       sortable: true,
-      width: "160px",
-      grow: 0,
-      style: { justifyContent: "flex-end", marginLeft: "3rem" },
-      cell: (r) => (
-        <div className="truncate" style={{ maxWidth: 200 }} title={r.Route}>
-          {r.Route}
-        </div>
-      ),
-    },
-    {
-      name: "Barangay",
-      selector: (r) => r.Barangay,
-      sortable: true,
-      width: "170px",
-      grow: 1,
-      style: { justifyContent: "flex-start", marginLeft: "6rem" },
-      cell: (r) => (
-        <div className="truncate" style={{ maxWidth: 200 }} title={r.Barangay}>
-          {r.Barangay}
-        </div>
-      ),
-    },
-    {
-      name: "Start Point",
-      selector: (r) => r.Particular,
-      sortable: true,
-      width: "150px",
-      grow: 2,
-      style: { justifyContent: "flex-start", marginLeft: "20px" },
-      cell: (r) => (
-        <div
-          className="truncate"
-          style={{ maxWidth: 260 }}
-          title={r.Particular}
-        >
-          {r.Particular}
-        </div>
-      ),
-    },
-    {
-      name: "KM",
-      selector: (r) => r.KM,
-      sortable: true,
-      right: true,
-      width: "80px",
-      grow: 2,
-      style: { justifyContent: "flex-end", marginLeft: "1.5rem" },
-      cell: (r) => <Numeric>{nfInt.format(r.KM)}</Numeric>,
+      cell: (r) => {
+        const route = routes.find((route) => route.id === r.routeId);
+        const routeName = route ? route.route : "No Route";
+        return (
+          <div className="truncate" title={routeName}>
+            {routeName}
+          </div>
+        );
+      },
     },
     {
       name: "Status",
-      selector: (r) => r.Status,
+      selector: (r) => r.status,
       sortable: true,
-      center: true,
-      width: "150px",
-      style: { marginLeft: "3rem" },
-      cell: (r) => (
-        <div className="w-full flex justify-center">
-          <StatusBadge value={r.Status} />
-        </div>
-      ),
+      cell: (r) => <StatusBadge value={r.status} />,
     },
     {
       name: "Action",
       button: true,
       center: true,
-      width: "4rem",
-      grow: 2,
-      style: { marginLeft: "3rem" },
+      width: "120px",
       cell: (row) => (
         <button
           onClick={() => {
             setViewing(row);
-            setEdit({
-              Route: row.Route,
-              Barangay: row.Barangay,
-              Particular: row.Particular,
-              KM: row.KM,
-              Status: row.Status,
-            });
+            setEdit({ ...row });
           }}
-          className="group inline-flex items-center justify-center h-9 w-9 rounded-full border border-gray-200 bg-white text-gray-600 hover:shadow-md transition hover:-translate-y-0.5"
-          style={{ backgroundColor: "#fff" }}
-          title="View"
+          title="Edit"
+          className="inline-flex items-center justify-center h-9 px-3 rounded-full border border-gray-200 bg-white text-gray-700 hover:shadow-md transition text-sm font-semibold"
         >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            className="h-4 w-4 transition group-hover:scale-105"
-            viewBox="0 0 24 24"
-            fill="currentColor"
-          >
-            <path d="M12 5c-5 0-9 3.5-10 7 1 3.5 5 7 10 7s9-3.5 10-7c-1-3.5-5-7-10-7Zm0 12a5 5 0 1 1 0-10 5 5 0 0 1 0 10Zm0-2.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z" />
-          </svg>
+          <FaEdit size={14} />
         </button>
       ),
       ignoreRowClick: true,
@@ -417,20 +478,14 @@ export default function RouteManagementSuper() {
     },
   ];
 
-  // ---------- TABLE STYLES ----------
   const tableStyles = {
     table: {
-      style: {
-        borderRadius: "1rem",
-        width: "88%",
-        tableLayout: "fixed",
-        marginLeft: "3rem",
-      },
+      style: { borderRadius: "1rem", width: "100%", tableLayout: "auto" },
     },
     headRow: {
       style: {
         minHeight: "40px",
-        backgroundColor: "#364C6E",
+        backgroundColor: primaryColor,
         borderTopLeftRadius: "0.75rem",
         borderTopRightRadius: "0.75rem",
         borderBottom: "1px solid #e5e7eb",
@@ -442,238 +497,357 @@ export default function RouteManagementSuper() {
     headCells: {
       style: {
         fontWeight: 700,
-        color: "#ffffffff",
+        color: "#ffffff",
         fontSize: "14px",
         textTransform: "uppercase",
         letterSpacing: "0.04em",
-        padding: "12px 18px",
-        textAlign: "center",
-        marginLeft: "2.6rem",
+        padding: "10px 12px",
+        alignItems: "center",
+        whiteSpace: "nowrap",
       },
     },
-    rows: {
-      style: {
-        minHeight: "42px",
-        borderBottom: "1px solid #f1f5f9",
-      },
-      highlightOnHoverStyle: {
-        backgroundColor: "#e2e2e2ff",
-        transition: "background 120ms ease",
-      },
-      stripedStyle: {
-        backgroundColor: "#f8f8f8ff",
-      },
-    },
+    rows: { style: { minHeight: "44px", borderBottom: "1px solid #f1f5f9" } },
     cells: {
       style: {
-        padding: "10px 10px",
-        alignItems: "center",
+        padding: "10px 12px",
         fontSize: "14px",
         color: "#0f172a",
-        fontVariantNumeric: "tabular-nums",
         whiteSpace: "nowrap",
         overflow: "hidden",
         textOverflow: "ellipsis",
       },
     },
-    pagination: {
-      style: { borderTop: "1px solid #e5e7eb" },
-    },
   };
 
-  // -------------- Add Route --------------
   const openAdd = () => {
     setIsAddOpen(true);
+    setForm({
+      vehicleID: "",
+      unit: "",
+      serialNo: "",
+      fuel: "",
+      routeId: "",
+      status: "Active",
+    });
     setErrors({});
   };
 
   const closeAdd = () => {
     setIsAddOpen(false);
-    setForm({
-      Route: "",
-      Barangay: "",
-      Particular: "",
-      KM: "",
-      Status: "Active",
-    });
-
     setErrors({});
+    setIsAddingUnit(false);
+    setNewUnitText("");
   };
 
   const onForm = (e) => {
     const { name, value } = e.target;
     setForm((f) => ({ ...f, [name]: value }));
     if (errors[name]) {
-      setErrors((prev) => {
-        const n = { ...prev };
-        delete n[name];
-        return n;
-      });
+      const newErrors = { ...errors };
+      delete newErrors[name];
+      setErrors(newErrors);
     }
   };
 
-  const saveRoute = async () => {
-    const newErrors = {};
-    if (!form.Route.trim()) newErrors.Route = "Please fill out this field";
-    if (!form.Barangay.trim())
-      newErrors.Barangay = "Please fill out this field";
-    if (!form.Particular.trim())
-      newErrors.Particular = "Please fill out this field";
-    if (form.KM === "" || isNaN(Number(form.KM)))
-      newErrors.KM = "Please enter a valid number";
+  const saveVehicle = async () => {
+    const validationErrors = {};
+    if (!form.vehicleID.trim())
+      validationErrors.vehicleID = "Vehicle ID is required";
+    if (!form.unit) validationErrors.unit = "Unit is required";
+    if (!form.serialNo.trim()) validationErrors.serialNo = "Serial No is required";
 
-    setErrors(newErrors);
-    if (Object.keys(newErrors).length > 0) return;
+    setErrors(validationErrors);
+    if (Object.keys(validationErrors).length) return;
 
     setSaving(true);
     try {
-      const q = query(
-        collection(db, "routes"),
-        where("Route", "==", form.Route.trim()),
-        where("Particular", "==", form.Particular.trim()),
-        where("Barangay", "==", form.Barangay.trim()),
-        where("KM", "==", Number(form.KM))
-      );
+      const vehicleRef = doc(db, "vehicle", form.vehicleID.trim());
+      const vehicleSnap = await getDoc(vehicleRef);
 
-      const snapshot = await getDocs(q);
-
-      if (!snapshot.empty) {
+      if (vehicleSnap.exists()) {
+        setErrors({ vehicleID: "This Vehicle ID already exists." });
         setSaving(false);
-        alert("This exact route already exists.");
         return;
       }
 
-      const nextId = maxRouteId + 1;
-      await setDoc(doc(db, "routes", String(nextId)), {
-        routeId: nextId,
-        Route: form.Route.trim(),
-        Particular: form.Particular.trim(),
-        Barangay: form.Barangay.trim(),
-        KM: Number(form.KM),
-        Status: form.Status || "Active",
+      // Save vehicle
+      await setDoc(vehicleRef, {
+        unit: form.unit,
+        serialNo: form.serialNo.trim(),
+        fuel: form.fuel.trim(),
+        routeId: form.routeId,
+        status: form.status,
+        createdAt: new Date().toISOString(),
       });
 
-      if (user) {
-        await saveSystemLog(
-          "Added a new Route",
-          `${user.firstName} ${user.lastName}`,
-          user.role
-        );
-      }
+      // Update the selected unit with vehicleID and serialNo
+      await setDoc(
+        doc(db, "unit", form.unit),
+        {
+          vehicleID: form.vehicleID.trim(),
+          serialNo: form.serialNo.trim(),
+          status: "Available",
+        },
+        { merge: true }
+      );
 
+      await logSystemActivity(
+        `Added new vehicle: ${form.vehicleID.trim()}`,
+        userName
+      );
+
+      setToastMessage("New vehicle added successfully!");
+      setShowSuccessToast(true);
+      setTimeout(() => setShowSuccessToast(false), 3000);
       closeAdd();
-      setShowAddToast(true);
-      setTimeout(() => setShowAddToast(false), 3000);
-    } catch (e) {
-      alert(e.message || String(e));
+    } catch (error) {
+      console.error("Error saving vehicle:", error);
+      if (error.code === "permission-denied") {
+        alert("Access denied. You don't have permission to add vehicles.");
+      } else {
+        alert("Failed to save vehicle. Please try again.");
+      }
     } finally {
       setSaving(false);
     }
   };
 
-  // -------------- Save Edits from View Modal --------------
   const saveEdits = async () => {
     if (!viewing || !edit) return;
 
     setSavingEdit(true);
     try {
-      await setDoc(
-        doc(db, "routes", String(viewing.id)),
-        {
-          Status: edit.Status || "Active",
-        },
-        { merge: true }
-      );
+      const prevUnit = viewing.unit;
+      const newUnit = edit.unit;
 
-      if (user) {
-        await saveSystemLog(
-          "Updated a Route's Status",
-          `${user.firstName} ${user.lastName}`,
-          user.role
+      // Update vehicle document
+      await setDoc(doc(db, "vehicle", viewing.id), {
+        unit: newUnit,
+        serialNo: edit.serialNo,
+        fuel: edit.fuel,
+        routeId: edit.routeId,
+        status: edit.status,
+      });
+
+      // Remove vehicleID from previous unit if it changed
+      if (prevUnit && prevUnit !== newUnit) {
+        await setDoc(
+          doc(db, "unit", prevUnit),
+          { vehicleID: "", serialNo: "" },
+          { merge: true }
         );
       }
+
+      // Assign vehicleID and serialNo to new unit
+      if (newUnit) {
+        await setDoc(
+          doc(db, "unit", newUnit),
+          { 
+            vehicleID: viewing.id,
+            serialNo: edit.serialNo 
+          },
+          { merge: true }
+        );
+      }
+
+      const changes = [];
+
+      if (prevUnit !== newUnit) changes.push(`Unit: ${prevUnit} → ${newUnit}`);
+      if (viewing.serialNo !== edit.serialNo)
+        changes.push(`Serial No: ${viewing.serialNo} → ${edit.serialNo}`);
+      if (viewing.fuel !== edit.fuel)
+        changes.push(`Fuel: ${viewing.fuel} → ${edit.fuel}`);
+      if (viewing.status !== edit.status)
+        changes.push(`Status: ${viewing.status} → ${edit.status}`);
+
+      const changesText = changes.length > 0 ? ` (${changes.join(", ")})` : "";
+
+      await logSystemActivity(
+        `Updated vehicle: ${viewing.id}${changesText}`,
+        userName
+      );
 
       setViewing(null);
       setEdit(null);
 
-      setShowEditToast(true);
-      setTimeout(() => setShowEditToast(false), 3000);
-    } catch (e) {
-      alert(e.message || String(e));
+      setToastMessage("Vehicle details updated successfully!");
+      setShowSuccessToast(true);
+      setTimeout(() => setShowSuccessToast(false), 3000);
+    } catch (error) {
+      alert(error.message || String(error));
     } finally {
       setSavingEdit(false);
     }
   };
-
-  useEffect(() => {
-    // Cleanup timeout when component unmounts
-    return () => {
-      if (showEditToast) {
-        clearTimeout();
-      }
-    };
-  }, [showEditToast]);
 
   return (
     <div className="flex bg-gray-100 min-h-screen">
       {/* Sidebar */}
 
       {/* Main Content */}
-      <main className="flex-1 p-10 mx-auto">
-        <div className="mx-auto max-w-[1800px]">
-          <div
-            className={`bg-white border rounded-xl shadow-sm relative ${
-              isAddOpen || (viewing && edit) ? "overflow-hidden" : ""
-            }`}
-            style={{
-              height: "54rem", // Fixed height for the entire frame
-            }}
-          >
-            {/* Header */}
-            <div className="px-6 pt-6 pb-4 border-b flex items-center justify-between">
-              <h1 className="text-2xl font-semibold text-gray-800">
-                Route Management
-              </h1>
+      <main className="flex-1 p-8 mx-auto">
+        {!isVehiclePage ? (
+          <Outlet />
+        ) : (
+          <div className="mx-auto w-full max-w-[1900px]">
+            <div
+              className="bg-white border rounded-xl shadow-sm flex flex-col"
+              style={{ minHeight: "calc(100vh - 112px)" }}
+            >
+              <div className="px-6 pt-6 pb-4 border-b flex items-center justify-between">
+                <h1 className="text-2xl font-semibold text-gray-800">
+                  Vehicle Management
+                </h1>
+                <div className="flex items-center gap-3">
+                  <div className="relative flex items-center gap-2 rounded-lg border border-gray-300 bg-white shadow-lg hover:shadow-xl focus-within:ring-1 focus-within:ring-blue-300 px-3 py-2">
+                    <select
+                      className="bg-transparent pr-6 text-sm outline-none"
+                      value={routeFilter}
+                      onChange={(e) => setRouteFilter(e.target.value)}
+                    >
+                      <option value="">Filter by Route</option>
+                      {routes.map((route) => (
+                        <option key={route.id} value={route.route}>
+                          {route.route}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-              <div className="flex items-center gap-4">
-                {/* Export Button */}
-                <div className="relative">
+                  <div className="relative">
+                    <input
+                      type="text"
+                      placeholder="Search"
+                      className="w-[420px] rounded-full border border-gray-200 pl-10 pr-3 py-2.5 text-sm shadow-sm focus:ring-4 focus:ring-blue-100 focus:border-blue-300 outline-none"
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                    />
+                    <div className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-gray-400">
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="h-4 w-4"
+                        viewBox="0 0 24 24"
+                        fill="currentColor"
+                      >
+                        <path d="M15.5 14h-.8l-.3-.3A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16a6.471 6.471 0 0 0 4.2-1.6l.3.3v.8l5 5 1.5-1.5-5-5Zm-6 0C7 14 5 12 5 9.5S7 5 9.5 5 14 7 14 9.5 12 14 9.5 14Z" />
+                      </svg>
+                    </div>
+                  </div>
+
+                  <div className="relative">
+                    {/* Export Button */}
+                    <button
+                      onClick={toggleDropdown}
+                      className="flex items-center gap-2 px-9 py-2 rounded-lg text-white shadow-md hover:shadow-lg transition"
+                      style={{ backgroundColor: primaryColor }}
+                    >
+                      <span className="font-semibold">Export</span>
+                    </button>
+
+                    {/* Dropdown Menu */}
+                    {isDropdownOpen && (
+                      <div className="absolute right-0 w-40 mt-2 bg-white shadow-lg rounded-lg z-10">
+                        <ul className="text-sm">
+                          <li>
+                            <button
+                              className="block px-4 py-2 text-gray-800 hover:bg-gray-100 w-full text-left"
+                              onClick={handleExportToCSV}
+                            >
+                              Export to Excel
+                            </button>
+                          </li>
+                          <li>
+                            <button
+                              className="block px-4 py-2 text-gray-800 hover:bg-gray-100 w-full text-left"
+                              onClick={handleExportToPDF}
+                            >
+                              Export to PDF
+                            </button>
+                          </li>
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+
                   <button
-                    onClick={toggleDropdown}
-                    className="flex items-center gap-2 px-6 py-2 rounded-lg text-white shadow-md hover:shadow-lg transition"
+                    onClick={openAdd}
+                    className="flex items-center gap-2 px-9 py-2 rounded-lg text-white shadow-md hover:shadow-lg transition"
                     style={{ backgroundColor: primaryColor }}
                   >
-                    <span className="font-semibold">Export</span>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      className="h-5 w-5"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M12 5v14M5 12h14" />
+                    </svg>
+                    <span className="font-semibold">Add Vehicle</span>
                   </button>
-
-                  {isDropdownOpen && (
-                    <div className="absolute right-0 w-40 mt-2 bg-white shadow-lg rounded-lg z-10">
-                      <ul className="text-sm">
-                        <li>
-                          <button
-                            onClick={handleExportToCSV}
-                            className="block px-4 py-2 text-gray-800 hover:bg-gray-100 w-full text-left"
-                          >
-                            Export to Excel
-                          </button>
-                        </li>
-                        <li>
-                          <button
-                            onClick={handleExportToPDF}
-                            className="block px-4 py-2 text-gray-800 hover:bg-gray-100 w-full text-left"
-                          >
-                            Export to PDF
-                          </button>
-                        </li>
-                      </ul>
-                    </div>
-                  )}
                 </div>
+              </div>
 
-                {/* Add Route Button */}
-                <button
-                  onClick={openAdd}
-                  className="flex items-center gap-1 px-6 py-2 rounded-lg text-white shadow-md hover:shadow-lg transition"
+              <div className="px-6 py-4 flex-1">
+                {err && (
+                  <div className="mb-3 text-red-700 bg-red-50 border border-red-200 px-3 py-2 rounded">
+                    {err}
+                  </div>
+                )}
+                <DataTable
+                  columns={columns}
+                  data={filteredWithRowNumber}
+                  progressPending={loading}
+                  customStyles={tableStyles}
+                  highlightOnHover
+                  striped
+                  dense
+                  persistTableHead
+                  responsive
+                  pagination
+                  paginationComponentOptions={{ noRowsPerPage: true }}
+                  fixedHeader
+                  fixedHeaderScrollHeight="70vh"
+                />
+              </div>
+            </div>
+          </div>
+        )}
+      </main>
+
+      {/* Success Toast */}
+      {showSuccessToast && (
+        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-[90] transform transition-all duration-300 opacity-100 translate-y-0">
+          <div className="flex items-start gap-3 rounded-lg border border-green-200 bg-green-50 px-5 py-3 text-green-800 shadow-md w-[520px] max-w-[90vw]">
+            <div className="mt-0.5">
+              <svg viewBox="0 0 24 24" className="h-5 w-5 fill-green-500">
+                <path d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
+              </svg>
+            </div>
+            <div className="text-sm">
+              <div className="font-semibold">{toastMessage}</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Vehicle Modal */}
+      {isAddOpen && (
+        <div
+          className="fixed inset-0 z-[80] grid place-items-center bg-black/40 backdrop-blur-sm p-4"
+          onClick={closeAdd}
+        >
+          <div
+            className="relative bg-white rounded-2xl shadow-2xl w-[720px] max-w-[90%] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="relative flex items-center justify-between px-6 py-4 border-b bg-white/70 backdrop-blur">
+              <div className="flex items-center gap-3">
+                <div
+                  className="h-9 w-9 rounded-full grid place-items-center text-white shadow"
                   style={{ backgroundColor: primaryColor }}
                 >
                   <svg
@@ -688,572 +862,419 @@ export default function RouteManagementSuper() {
                   >
                     <path d="M12 5v14M5 12h14" />
                   </svg>
-                  <span className="font-semibold">Add Route</span>
-                </button>
+                </div>
+                <div>
+                  <h2 className="text-lg font-semibold text-gray-800">
+                    Add Vehicle
+                  </h2>
+                  <p className="text-xs text-gray-500">
+                    Create a new vehicle record.
+                  </p>
+                </div>
               </div>
+              <button
+                onClick={closeAdd}
+                className="h-8 w-8 rounded-full grid place-items-center border border-gray-200 hover:bg-gray-50"
+                title="Close"
+              >
+                <svg
+                  className="h-4.5 w-4.5"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                >
+                  <path d="M6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12 19 6.4 17.6 5 12 10.6 6.4 5z" />
+                </svg>
+              </button>
             </div>
 
-            {/* Filters */}
-            <div className="px-6 py-4 flex flex-wrap items-center gap-3">
-              <div className="relative flex items-center gap-2 rounded-lg border border-gray-300 bg-white shadow-lg hover:shadow-xl focus-within:ring-1 focus-within:ring-blue-300 px-3 py-2">
-                <span className="text-gray-400">
-                  <svg
-                    viewBox="0 0 24 24"
-                    className="h-4 w-4"
-                    fill="currentColor"
-                  >
-                    <path d="M12 2a10 10 0 100 20 10 10 0 000-20Zm-1 5h2v6h-2V7Zm1 10a1.5 1.5 0 110-3 1.5 1.5 0 010 3Z" />
-                  </svg>
-                </span>
+            <div className="p-12 grid ml-6 grid-cols-3 gap-x-5 gap-y-4">
+              <div className="col-span-1">
+                <label className="block text-sm text-gray-600 mb-1">
+                  Vehicle ID
+                </label>
+                <input
+                  name="vehicleID"
+                  className={`w-full border rounded-md px-3 py-2 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300 ${
+                    errors.vehicleID ? "border-red-500" : "border-gray-200"
+                  }`}
+                  value={form.vehicleID}
+                  onChange={onForm}
+                />
+                {errors.vehicleID && (
+                  <p className="text-red-500 text-xs mt-1">
+                    {errors.vehicleID}
+                  </p>
+                )}
+              </div>
+
+              <div className="col-span-1">
+                <label className="block text-sm text-gray-600 mb-1">Unit</label>
+                <div className="flex items-center gap-2">
+                  {!isAddingUnit ? (
+                    <>
+                      <select
+                        name="unit"
+                        className={`flex-1 border rounded-md px-3 py-2 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300 ${
+                          errors.unit ? "border-red-500" : "border-gray-200"
+                        }`}
+                        value={form.unit}
+                        onChange={onForm}
+                      >
+                        <option value="">Select Unit</option>
+                        {units.map((u) => (
+                          <option key={u.id} value={u.id}>
+                            {u.id}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => setIsAddingUnit(true)}
+                        className="h-9 w-9 rounded-md flex items-center justify-center text-white shadow-md hover:shadow-lg transition-all duration-200 transform hover:scale-105"
+                        style={{ backgroundColor: primaryColor }}
+                        title="Add new unit"
+                      >
+                        <FaPlus size={14} />
+                      </button>
+                    </>
+                  ) : (
+                    <div className="flex items-center gap-2 w-full">
+                      <input
+                        type="text"
+                        placeholder="Enter unit ID (e.g., VAB1234)"
+                        className="flex-1 border rounded-md px-3 py-2 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300 border-gray-200"
+                        value={newUnitText}
+                        onChange={(e) => setNewUnitText(e.target.value)}
+                        autoFocus
+                      />
+                      <button
+                        type="button"
+                        onClick={saveNewUnit}
+                        disabled={savingUnit || !newUnitText.trim()}
+                        className="h-9 px-3 rounded-md bg-green-600 hover:bg-green-700 text-white disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center text-sm font-medium"
+                        title="Save unit"
+                      >
+                        {savingUnit ? (
+                          <svg
+                            className="h-4 w-4 animate-spin"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                          >
+                            <circle
+                              className="opacity-25"
+                              cx="12"
+                              cy="12"
+                              r="10"
+                              stroke="currentColor"
+                              strokeWidth="4"
+                            />
+                            <path
+                              className="opacity-75"
+                              fill="currentColor"
+                              d="M4 12a8 8 0 018-8v4A4 4 0 004 12z"
+                            />
+                          </svg>
+                        ) : (
+                          "Save"
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={cancelAddUnit}
+                        disabled={savingUnit}
+                        className="h-9 px-3 rounded-md bg-gray-300 hover:bg-gray-400 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+                        title="Cancel"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  )}
+                </div>
+                {errors.unit && (
+                  <p className="text-red-500 text-xs mt-1">{errors.unit}</p>
+                )}
+              </div>
+
+              <div className="col-span-1">
+                <label className="block text-sm text-gray-600 mb-1">
+                  Serial No
+                </label>
+                <input
+                  name="serialNo"
+                  className={`w-full border rounded-md px-3 py-2 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300 ${
+                    errors.serialNo ? "border-red-500" : "border-gray-200"
+                  }`}
+                  value={form.serialNo}
+                  onChange={onForm}
+                  placeholder="e.g., SE-00035"
+                />
+                {errors.serialNo && (
+                  <p className="text-red-500 text-xs mt-1">{errors.serialNo}</p>
+                )}
+              </div>
+
+              <div className="col-span-1">
+                <label className="block text-sm text-gray-600 mb-1">Fuel</label>
+                <input
+                  name="fuel"
+                  className={`w-full border rounded-md px-3 py-2 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300 ${
+                    errors.fuel ? "border-red-500" : "border-gray-200"
+                  }`}
+                  value={form.fuel}
+                  onChange={onForm}
+                />
+                {errors.fuel && (
+                  <p className="text-red-500 text-xs mt-1">{errors.fuel}</p>
+                )}
+              </div>
+
+              <div className="col-span-1">
+                <label className="block text-sm text-gray-600 mb-1">
+                  Route
+                </label>
                 <select
-                  className="bg-transparent pr-6 text-sm outline-none"
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
+                  name="routeId"
+                  className={`w-full border rounded-md px-3 py-2 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300 ${
+                    errors.routeId ? "border-red-500" : "border-gray-200"
+                  }`}
+                  value={form.routeId}
+                  onChange={onForm}
                 >
-                  <option value="">All Status</option>
+                  <option value="">Select Route</option>
+                  {routes.map((route) => (
+                    <option key={route.id} value={route.id}>
+                      {route.route}
+                    </option>
+                  ))}
+                </select>
+                {errors.routeId && (
+                  <p className="text-red-500 text-xs mt-1">{errors.routeId}</p>
+                )}
+              </div>
+
+              <div className="col-span-1">
+                <label className="block text-sm text-gray-600 mb-1">
+                  Status
+                </label>
+                <select
+                  name="status"
+                  className={`w-full border rounded-md px-3 py-2 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300 ${
+                    errors.status ? "border-red-500" : "border-gray-200"
+                  }`}
+                  value={form.status}
+                  onChange={onForm}
+                >
                   <option value="Active">Active</option>
                   <option value="Inactive">Inactive</option>
                 </select>
               </div>
-
-              <div className="relative flex items-center gap-2 rounded-lg border border-gray-300 bg-white shadow-lg hover:shadow-xl focus-within:ring-1 focus-within:ring-blue-300 px-3 py-2">
-                <span className="text-gray-400">
-                  <svg
-                    viewBox="0 0 24 24"
-                    className="h-4 w-4"
-                    fill="currentColor"
-                  >
-                    <path d="M3 12l7-9 7 9-7 9-7-9Zm7 5.5L7.5 12 10 8.5 12.5 12 10 17.5Z" />
-                  </svg>
-                </span>
-                <select
-                  className="bg-transparent pr-6 text-sm outline-none"
-                  value={routeFilter}
-                  onChange={(e) => {
-                    setRouteFilter(e.target.value);
-                    setBarangayFilter(""); // Clear barangay filter
-                    setParticularFilter(""); // Clear particular filter
-                  }}
-                >
-                  <option value="">All Routes</option>
-                  {routeOptions.map((route) => (
-                    <option key={route} value={route}>
-                      {route}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="relative flex items-center gap-2 rounded-lg border border-gray-300 bg-white shadow-lg hover:shadow-xl focus-within:ring-1 focus-within:ring-blue-300 px-3 py-2">
-                <span className="text-gray-400">
-                  <svg
-                    viewBox="0 0 24 24"
-                    className="h-4 w-4"
-                    fill="currentColor"
-                  >
-                    <path d="M4 10l8-6 8 6v8a2 2 0 0 1-2 2h-3v-6H9v6H6a2 2 0 0 1-2-2v-8Z" />
-                  </svg>
-                </span>
-                <select
-                  className="bg-transparent pr-6 text-sm outline-none"
-                  value={barangayFilter}
-                  onChange={(e) => setBarangayFilter(e.target.value)}
-                >
-                  <option value="">All Barangays</option>
-                  {barangayOptions.map((o) => (
-                    <option key={o} value={o}>
-                      {o}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="relative flex items-center gap-2 rounded-lg border border-gray-300 bg-white shadow-lg hover:shadow-xl focus-within:ring-1 focus-within:ring-blue-300 px-3 py-2">
-                <span className="text-gray-400">
-                  <svg
-                    viewBox="0 0 24 24"
-                    className="h-4 w-4"
-                    fill="currentColor"
-                  >
-                    <path d="M5 5h14v4H5V5Zm0 6h9v4H5v-4Zm0 6h14v2H5v-2Z" />
-                  </svg>
-                </span>
-                <select
-                  className="bg-transparent pr-6 text-sm outline-none"
-                  value={particularFilter}
-                  onChange={(e) => setParticularFilter(e.target.value)}
-                >
-                  <option value="">All Particulars</option>
-                  {particularOptions.map((o) => (
-                    <option key={o} value={o}>
-                      {o}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="ml-auto flex items-center">
-                <div className="relative">
-                  <input
-                    type="text"
-                    placeholder="Search"
-                    className="w-[380px] rounded-full border border-gray-200 pl-10 pr-4 py-2.5 text-sm text-gray-600 shadow-sm focus:ring-4 focus:ring-blue-100 focus:border-blue-300 outline-none transition"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                  />
-                  <div className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-gray-400">
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      className="h-4 w-4"
-                      viewBox="0 0 24 24"
-                      fill="currentColor"
-                    >
-                      <path d="M15.5 14h-.8l-.3-.3A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16a6.471 6.471 0 0 0 4.2-1.6l.3.3v.8l5 5 1.5-1.5-5-5Zm-6 0C7 14 5 12 5 9.5S7 5 9.5 5 14 7 14 9.5 12 14 9.5 14Z" />
-                    </svg>
-                  </div>
-                </div>
-              </div>
             </div>
 
-            {/* Table */}
-            <div className="px-6 pb-6">
-              {err && (
-                <div className="mb-3 text-red-700 bg-red-50 border border-red-200 px-3 py-2 rounded">
-                  {err}
-                </div>
-              )}
-
-              <DataTable
-                columns={columns}
-                data={filtered}
-                progressPending={loading}
-                customStyles={tableStyles}
-                highlightOnHover
-                striped
-                dense
-                persistTableHead
-                defaultSortFieldId={1}
-                responsive
-                pagination
-                paginationComponentOptions={{ noRowsPerPage: true }}
-                paginationPerPage={14}
-                style={{ width: "100%" }}
-              />
-            </div>
-
-            {/* ---------- ADD ROUTE MODAL (two-column horizontal form) ---------- */}
-            {isAddOpen && (
-              <div
-                className="absolute inset-0 z-50 grid place-items-center bg-black/40 backdrop-blur-sm p-4"
+            <div className="px-6 py-4 border-t bg-white/70 backdrop-blur flex justify-end gap-3">
+              <button
                 onClick={closeAdd}
+                className="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700"
+                disabled={saving}
               >
+                Cancel
+              </button>
+              <button
+                onClick={saveVehicle}
+                className="px-4 py-2 rounded-lg text-white hover:opacity-95 disabled:opacity-60 inline-flex items-center gap-2"
+                style={{ backgroundColor: primaryColor }}
+                disabled={saving}
+              >
+                {saving && (
+                  <svg
+                    className="h-4 w-4 animate-spin"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    />
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8v4A4 4 0 004 12z"
+                    />
+                  </svg>
+                )}
+                {saving ? "Saving..." : "Save Vehicle"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Vehicle Modal */}
+      {viewing && edit && (
+        <div
+          className="fixed inset-0 z-[80] grid place-items-center bg-black/40 backdrop-blur-sm p-4"
+          onClick={() => {
+            setViewing(null);
+            setEdit(null);
+          }}
+        >
+          <div
+            className="relative bg-white rounded-2xl shadow-2xl w-[720px] max-w-[90%] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="relative flex items-center justify-between px-6 py-4 border-b bg-white/70 backdrop-blur">
+              <div className="flex items-center gap-3">
                 <div
-                  className="relative bg-white rounded-2xl shadow-2xl w-[100px] max-w-[100%] overflow-hidden"
-                  onClick={(e) => e.stopPropagation()}
+                  className="h-9 w-9 rounded-full grid place-items-center text-white shadow"
+                  style={{ backgroundColor: primaryColor }}
                 >
-                  <div className="pointer-events-none absolute -inset-px rounded-2xl bg-gradient-to-br from-blue-100/70 via-indigo-100/50 to-sky-50/60" />
-
-                  {/* Header */}
-                  <div className="relative flex items-center justify-between px-6 py-6 border-b bg-white/70 backdrop-blur">
-                    <div className="flex items-center gap-3">
-                      <div
-                        className="h-10 w-10 rounded-full grid place-items-center text-white shadow"
-                        style={{ backgroundColor: primaryColor }}
-                      >
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          className="h-5 w-5"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <path d="M12 5v14M5 12h14" />
-                        </svg>
-                      </div>
-                      <div>
-                        <h2 className="text-lg font-semibold text-gray-800">
-                          Add New Route
-                        </h2>
-                        <p className="text-xs text-gray-500">
-                          Provide details for the new route.
-                        </p>
-                      </div>
-                    </div>
-
-                    <button
-                      onClick={closeAdd}
-                      className="h-10 w-10 rounded-full grid place-items-center border border-gray-200 hover:bg-gray-50"
-                      title="Close"
-                    >
-                      <svg
-                        className="h-4.5 w-4.5"
-                        viewBox="0 0 24 24"
-                        fill="currentColor"
-                      >
-                        <path d="M6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12 19 6.4 17.6 5 12 10.6 6.4 5z" />
-                      </svg>
-                    </button>
-                  </div>
-
-                  {/* Body: two-column grid */}
-                  <div className="relative p-12 overflow-y-auto max-h-[calc(88vh-56px-64px)]">
-                    <div className="grid grid-cols-3 gap-x-8 gap-y-9">
-                      {/* Route – full width */}
-                      <div className="col-span-2">
-                        <label className="block text-sm text-gray-600 mb-1">
-                          Route <span className="text-red-500">*</span>
-                        </label>
-                        <input
-                          name="Route"
-                          className={`w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300 ${
-                            errors.Route ? "border-red-500" : "border-gray-200"
-                          }`}
-                          value={form.Route}
-                          onChange={onForm}
-                        />
-                        {errors.Route && (
-                          <p className="text-red-500 text-xs mt-1">
-                            {errors.Route}
-                          </p>
-                        )}
-                      </div>
-
-                      <div>
-                        <label className="block text-sm text-gray-600 mb-1">
-                          Barangay <span className="text-red-500">*</span>
-                        </label>
-                        <input
-                          name="Barangay"
-                          className={`w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300 ${
-                            errors.Barangay
-                              ? "border-red-500"
-                              : "border-gray-200"
-                          }`}
-                          value={form.Barangay}
-                          onChange={onForm}
-                        />
-                        {errors.Barangay && (
-                          <p className="text-red-500 text-xs mt-1">
-                            {errors.Barangay}
-                          </p>
-                        )}
-                      </div>
-
-                      <div>
-                        <label className="block text-sm text-gray-600 mb-1">
-                          Particular <span className="text-red-500">*</span>
-                        </label>
-                        <input
-                          name="Particular"
-                          className={`w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300 ${
-                            errors.Particular
-                              ? "border-red-500"
-                              : "border-gray-200"
-                          }`}
-                          value={form.Particular}
-                          onChange={onForm}
-                        />
-                        {errors.Particular && (
-                          <p className="text-red-500 text-xs mt-1">
-                            {errors.Particular}
-                          </p>
-                        )}
-                      </div>
-
-                      <div>
-                        <label className="block text-sm text-gray-600 mb-1">
-                          KM <span className="text-red-500">*</span>
-                        </label>
-                        <input
-                          name="KM"
-                          type="number"
-                          min="0"
-                          className={`w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300 ${
-                            errors.KM ? "border-red-500" : "border-gray-200"
-                          }`}
-                          value={form.KM}
-                          onChange={onForm}
-                        />
-                        {errors.KM && (
-                          <p className="text-red-500 text-xs mt-1">
-                            {errors.KM}
-                          </p>
-                        )}
-                      </div>
-
-                      <div>
-                        <label className="block text-sm text-gray-600 mb-1">
-                          Status
-                        </label>
-                        <select
-                          name="Status"
-                          className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300 border-gray-200"
-                          value={form.Status}
-                          onChange={onForm}
-                        >
-                          <option value="Active">Active</option>
-                          <option value="Inactive">Inactive</option>
-                        </select>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Footer */}
-                  <div className="relative px-6 py-4 border-t bg-white/70 backdrop-blur flex justify-end gap-3">
-                    <button
-                      className="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700"
-                      onClick={closeAdd}
-                      disabled={saving}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      className="px-4 py-2 rounded-lg text-white hover:opacity-95 disabled:opacity-60 inline-flex items-center gap-2"
-                      style={{ backgroundColor: primaryColor }}
-                      onClick={saveRoute}
-                      disabled={saving}
-                    >
-                      {saving && (
-                        <svg
-                          className="h-4 w-4 animate-spin"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                        >
-                          <circle
-                            className="opacity-25"
-                            cx="12"
-                            cy="12"
-                            r="10"
-                            stroke="currentColor"
-                            strokeWidth="4"
-                          />
-                          <path
-                            className="opacity-75"
-                            fill="currentColor"
-                            d="M4 12a8 8 0 018-8v4A4 4 0 004 12z"
-                          />
-                        </svg>
-                      )}
-                      {saving ? "Saving..." : "Save"}
-                    </button>
-                  </div>
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="h-5 w-5"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M3 7h18M3 12h18M3 17h18" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-base font-semibold text-gray-800">
+                    Edit Vehicle
+                  </h3>
+                  <p className="text-xs text-gray-500">{viewing.id}</p>
                 </div>
               </div>
-            )}
+              <StatusBadge value={edit.status} />
+            </div>
 
-            {/* ---------- VIEW / EDIT MODAL (two-column horizontal form) ---------- */}
-            {viewing && edit && (
-              <div
-                className="absolute inset-0 z-50 grid place-items-center bg-black/40 backdrop-blur-sm p-4"
+            <div className="p-10 grid ml-6 grid-cols-3 gap-x-5 gap-y-4">
+              <div className="col-span-1">
+                <label className="block text-gray-600 mb-1">Vehicle ID</label>
+                <input
+                  className="w-full border rounded-md px-3 py-2 border-gray-200 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300"
+                  value={edit.id}
+                  readOnly
+                />
+              </div>
+              <div className="col-span-1">
+                <label className="block text-gray-600 mb-1">Unit</label>
+                <select
+                  value={edit.unit}
+                  onChange={(e) => setEdit({ ...edit, unit: e.target.value })}
+                  className="w-full border rounded-md px-3 py-2 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300"
+                >
+                  <option value="">Select Unit</option>
+                  {units
+                    .filter((u) => !u.vehicleID || u.id === viewing.unit)
+                    .map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.id}
+                      </option>
+                    ))}
+                </select>
+              </div>
+
+              <div className="col-span-1">
+                <label className="block text-gray-600 mb-1">Serial No</label>
+                <input
+                  className="w-full border rounded-md px-3 py-2 border-gray-200 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300"
+                  value={edit.serialNo}
+                  onChange={(e) => setEdit({ ...edit, serialNo: e.target.value })}
+                  placeholder="e.g., SE-00035"
+                />
+              </div>
+
+              <div className="col-span-1">
+                <label className="block text-gray-600 mb-1">Fuel</label>
+                <input
+                  className="w-full border rounded-md px-3 py-2 border-gray-200 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300"
+                  value={edit.fuel}
+                  onChange={(e) => setEdit({ ...edit, fuel: e.target.value })}
+                />
+              </div>
+
+              <div className="col-span-1">
+                <label className="block text-gray-600 mb-1">Route</label>
+                <select
+                  value={edit.routeId}
+                  onChange={(e) =>
+                    setEdit({ ...edit, routeId: e.target.value })
+                  }
+                  className="w-full border rounded-md px-3 py-2 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300"
+                >
+                  <option value="">Select Route</option>
+                  {routes.map((route) => (
+                    <option key={route.id} value={route.id}>
+                      {route.route}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="col-span-1">
+                <label className="block text-gray-600 mb-1">Status</label>
+                <select
+                  value={edit.status}
+                  onChange={(e) => setEdit({ ...edit, status: e.target.value })}
+                  className="w-full border rounded-md px-3 py-2 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300"
+                >
+                  <option value="Active">Active</option>
+                  <option value="Inactive">Inactive</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="px-6 py-4 border-t bg-white/70 backdrop-blur flex justify-end gap-3">
+              <button
+                className="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700"
                 onClick={() => {
                   setViewing(null);
                   setEdit(null);
                 }}
+                disabled={savingEdit}
               >
-                <div
-                  className="relative bg-white rounded-2xl shadow-2xl w-[960px] max-w-[100%] overflow-hidden"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <div className="pointer-events-none absolute -inset-px rounded-2xl bg-gradient-to-br from-indigo-100/60 via-blue-100/50 to-sky-50/50" />
-
-                  {/* Header */}
-                  <div className="relative flex items-center justify-between px-6 py-6 border-b bg-white/70 backdrop-blur">
-                    <div className="flex items-center gap-3">
-                      <div
-                        className="h-10 w-10 rounded-full grid place-items-center text-white shadow"
-                        style={{ backgroundColor: primaryColor }}
-                      >
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          className="h-5 w-5"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <path d="M3 7h18M3 12h18M3 17h18" />
-                        </svg>
-                      </div>
-                      <div>
-                        <h3 className="text-lg font-semibold text-gray-800">
-                          Route Details
-                        </h3>
-                        <p className="text-xs text-gray-500">
-                          Route ID: {viewing.routeId}
-                        </p>
-                      </div>
-                    </div>
-
-                    <StatusBadge value={edit.Status} />
-                  </div>
-
-                  {/* Body */}
-                  <div className="relative p-12 overflow-y-auto max-h-[calc(88vh-50px-64px)]">
-                    <div className="grid grid-cols-3 gap-x-8 gap-y-9 text-sm">
-                      {/* Route – full width */}
-                      <div className="col-span-2">
-                        <label className="block text-gray-600 mb-1">
-                          Route
-                        </label>
-                        <input
-                          className="w-full border rounded-md px-3 py-2 border-gray-200 bg-gray-100 text-gray-500 cursor-not-allowed"
-                          value={edit.Route}
-                          disabled
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-gray-600 mb-1">
-                          Barangay
-                        </label>
-                        <input
-                          className="w-full border rounded-md px-3 py-2 border-gray-200 bg-gray-100 text-gray-500 cursor-not-allowed"
-                          value={edit.Barangay}
-                          disabled
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-gray-600 mb-1">
-                          Particular
-                        </label>
-                        <input
-                          className="w-full border rounded-md px-3 py-2 border-gray-200 bg-gray-100 text-gray-500 cursor-not-allowed"
-                          value={edit.Particular}
-                          disabled
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-gray-600 mb-1">KM</label>
-                        <input
-                          type="number"
-                          min="0"
-                          className="w-full border rounded-md px-3 py-2 border-gray-200 bg-gray-100 text-gray-500 cursor-not-allowed"
-                          value={edit.KM}
-                          disabled
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-gray-600 mb-1">
-                          Status
-                        </label>
-                        <select
-                          className="w-full border rounded-md px-3 py-2 border-gray-200 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300"
-                          value={edit.Status}
-                          onChange={(e) =>
-                            setEdit({ ...edit, Status: e.target.value })
-                          }
-                        >
-                          <option value="Active">Active</option>
-                          <option value="Inactive">Inactive</option>
-                        </select>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Footer */}
-                  <div className="relative px-6 py-4 border-t bg-white/70 backdrop-blur flex justify-end gap-3">
-                    <button
-                      className="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700"
-                      onClick={() => {
-                        setViewing(null);
-                        setEdit(null);
-                      }}
-                      disabled={savingEdit}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      className="px-4 py-2 rounded-lg text-white hover:opacity-95 disabled:opacity-60 inline-flex items-center gap-2"
-                      style={{ backgroundColor: primaryColor }}
-                      onClick={saveEdits}
-                      disabled={savingEdit}
-                    >
-                      {savingEdit && (
-                        <svg
-                          className="h-4 w-4 animate-spin"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                        >
-                          <circle
-                            className="opacity-25"
-                            cx="12"
-                            cy="12"
-                            r="10"
-                            stroke="currentColor"
-                            strokeWidth="4"
-                          />
-                          <path
-                            className="opacity-75"
-                            fill="currentColor"
-                            d="M4 12a8 8 0 018-8v4A4 4 0 004 12z"
-                          />
-                        </svg>
-                      )}
-                      {savingEdit ? "Saving..." : "Save"}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </main>
-
-      {/* Toast: Route Updated Successfully (top-center) */}
-      <div
-        aria-live="polite"
-        className={`fixed top-5 left-1/2 -translate-x-1/2 z-[60] transform transition-all duration-300 ${
-          showEditToast
-            ? "opacity-100 translate-y-0"
-            : "opacity-0 -translate-y-3 pointer-events-none"
-        }`}
-      >
-        <div className="flex items-start gap-3 rounded-lg border border-green-200 bg-green-50 px-5 py-3 text-green-800 shadow-md w-[520px] max-w-[90vw]">
-          <div className="mt-0.5">
-            <svg viewBox="0 0 24 24" className="h-5 w-5 fill-green-500">
-              <path d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
-            </svg>
-          </div>
-          <div className="text-sm">
-            <div className="font-semibold">Route updated successfully</div>
-            <div className="text-green-700/80">
-              Your route details have been updated.
+                Cancel
+              </button>
+              <button
+                className="px-4 py-2 rounded-lg text-white hover:opacity-95 disabled:opacity-60 inline-flex items-center gap-2"
+                style={{ backgroundColor: primaryColor }}
+                onClick={saveEdits}
+                disabled={savingEdit}
+              >
+                {savingEdit && (
+                  <svg
+                    className="h-4 w-4 animate-spin"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    />
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8v4A4 4 0 004 12z"
+                    />
+                  </svg>
+                )}
+                {savingEdit ? "Saving..." : "Save Changes"}
+              </button>
             </div>
           </div>
         </div>
-      </div>
-
-      {/* Success Toast for Added Route */}
-      <div
-        aria-live="polite"
-        className={`fixed top-5 left-1/2 -translate-x-1/2 z-[60] transform transition-all duration-300 ${
-          showAddToast
-            ? "opacity-100 translate-y-0"
-            : "opacity-0 -translate-y-3 pointer-events-none"
-        }`}
-      >
-        <div className="flex items-start gap-3 rounded-lg border border-green-200 bg-green-50 px-5 py-3 text-green-800 shadow-md w-[520px] max-w-[90vw]">
-          <div className="mt-0.5">
-            <svg viewBox="0 0 24 24" className="h-5 w-5 fill-green-500">
-              <path d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
-            </svg>
-          </div>
-          <div className="text-sm">
-            <div className="font-semibold">Route added successfully</div>
-            <div className="text-green-700/80">
-              Your new route has been added.
-            </div>
-          </div>
-        </div>
-      </div>
+      )}
     </div>
   );
 }
