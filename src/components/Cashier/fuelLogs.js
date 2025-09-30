@@ -25,6 +25,15 @@ const FuelLogsPage = () => {
   const userName =
     currentUser?.displayName || currentUser?.email || "Unknown User";
 
+  // Get today's date in YYYY-MM-DD format
+  const getTodayDate = () => {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, "0");
+    const day = String(today.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
   const [fuelPrice, setFuelPrice] = useState(0.0);
   const [search, setSearch] = useState("");
   const [logs, setLogs] = useState([]);
@@ -47,9 +56,7 @@ const FuelLogsPage = () => {
   const [showWarningModal, setShowWarningModal] = useState(false);
   const [currentUserRole, setCurrentUserRole] = useState("Unknown");
   const [selectedVehicle, setSelectedVehicle] = useState("N/A");
-  const [dateFilter, setDateFilter] = useState(
-    new Date().toISOString().split("T")[0]
-  );
+  const [dateFilter, setDateFilter] = useState(getTodayDate());
 
   const primaryColor = "#364C6E";
 
@@ -218,7 +225,7 @@ const FuelLogsPage = () => {
         const q = query(usersRef, where("role", "in", ["Driver", "Reliever"]));
         const snapshot = await getDocs(q);
 
-        const today = new Date().toISOString().split("T")[0];
+        const today = getTodayDate();
         const drivers = [];
 
         for (const docSnap of snapshot.docs) {
@@ -636,7 +643,7 @@ const FuelLogsPage = () => {
     <main className="flex-1 p-8 mx-auto">
       <div className="mx-auto w-full max-w-[1900px]">
         <div
-          className="bg-white border rounded-xl shadow-sm flex flex-col"
+          className="bg-white border rounded-2xl shadow-md flex flex-col"
           style={{ minHeight: "calc(100vh - 112px)" }}
         >
           {/* Header */}
@@ -648,7 +655,7 @@ const FuelLogsPage = () => {
                 <input
                   type="text"
                   placeholder="Search"
-                  className="w-[420px] rounded-full border border-gray-200 pl-10 pr-3 py-2.5 text-sm shadow-sm focus:ring-4 focus:ring-blue-100 focus:border-blue-300 outline-none"
+                  className="w-[420px] rounded-lg border border-gray-200 pl-10 pr-3 py-2.5 text-sm shadow-sm focus:ring-2 focus:ring-blue-500 outline-none"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                 />
@@ -667,7 +674,7 @@ const FuelLogsPage = () => {
               <div className="relative">
                 <input
                   type="date"
-                  className="rounded-full border border-gray-200 px-4 py-2.5 text-sm text-gray-500 shadow-sm focus:ring-4 focus:ring-blue-100 focus:border-blue-300 outline-none"
+                  className="rounded-lg border border-gray-200 px-4 py-2.5 text-sm text-gray-500 shadow-sm focus:ring-2 focus:ring-blue-500 outline-none"
                   value={dateFilter}
                   onChange={(e) => setDateFilter(e.target.value)}
                 />
@@ -723,7 +730,7 @@ const FuelLogsPage = () => {
           {/* Content Area */}
           <div className="px-6 py-4 flex-1 space-y-6">
             {/* Fuel Price Card */}
-            <div className="bg-white border rounded-xl shadow-sm p-6 w-72">
+            <div className="bg-white border rounded-2xl shadow p-6 w-72">
               <div className="flex items-center gap-4">
                 <div
                   className="p-3 rounded-full"
@@ -750,7 +757,7 @@ const FuelLogsPage = () => {
             </div>
 
             {/* Logs Table */}
-            <div className="bg-white border rounded-xl shadow-sm overflow-hidden">
+            <div className="bg-white border rounded-2xl shadow overflow-hidden">
               {err && (
                 <div className="mb-3 text-red-700 bg-red-50 border border-red-200 px-3 py-2 rounded mx-4 mt-4">
                   {err}
@@ -818,7 +825,6 @@ const FuelLogsPage = () => {
                 </div>
 
                 {/* Form */}
-               {/* Form */}
                 <div className="p-8 space-y-6">
                   {/* Driver Field */}
                   <div>
