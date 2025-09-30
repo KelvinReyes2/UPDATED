@@ -14,7 +14,7 @@ import {
 } from "chart.js";
 import {
   collection,
-  getDocs,
+  onSnapshot,
   query,
   orderBy,
   addDoc,
@@ -194,85 +194,110 @@ const TransactionOverview = () => {
     }
   };
 
-  // Fetch units from Firestore
-  const fetchUnits = useCallback(async () => {
+  // Real-time units listener
+  const setupUnitsListener = useCallback(() => {
     try {
       const unitsRef = collection(db, "unit");
-      const querySnapshot = await getDocs(unitsRef);
-      const unitsData = [];
-      querySnapshot.forEach((doc) => {
-        const data = doc.data();
-        unitsData.push({
-          id: doc.id,
-          ...data,
+      
+      const unsubscribe = onSnapshot(unitsRef, (querySnapshot) => {
+        const unitsData = [];
+        querySnapshot.forEach((doc) => {
+          const data = doc.data();
+          unitsData.push({
+            id: doc.id,
+            ...data,
+          });
         });
+        setUnits(unitsData);
+      }, (error) => {
+        console.error("Error listening to units:", error);
       });
-      setUnits(unitsData);
+
+      return unsubscribe;
     } catch (error) {
-      console.error("Error fetching units:", error);
+      console.error("Error setting up units listener:", error);
     }
   }, []);
 
-  // Fetch unit logs from Firestore
-  const fetchUnitLogs = useCallback(async () => {
+  // Real-time unit logs listener
+  const setupUnitLogsListener = useCallback(() => {
     try {
       const unitLogsRef = collection(db, "unitLogs");
-      const querySnapshot = await getDocs(unitLogsRef);
-      const unitLogsData = [];
-      querySnapshot.forEach((doc) => {
-        const data = doc.data();
-        unitLogsData.push({
-          id: doc.id,
-          ...data,
+      
+      const unsubscribe = onSnapshot(unitLogsRef, (querySnapshot) => {
+        const unitLogsData = [];
+        querySnapshot.forEach((doc) => {
+          const data = doc.data();
+          unitLogsData.push({
+            id: doc.id,
+            ...data,
+          });
         });
+        setUnitLogs(unitLogsData);
+      }, (error) => {
+        console.error("Error listening to unit logs:", error);
       });
-      setUnitLogs(unitLogsData);
+
+      return unsubscribe;
     } catch (error) {
-      console.error("Error fetching unit logs:", error);
+      console.error("Error setting up unit logs listener:", error);
     }
   }, []);
 
-  // Fetch transactions from Firestore
-  const fetchTransactions = useCallback(async () => {
+  // Real-time transactions listener
+  const setupTransactionsListener = useCallback(() => {
     setLoading(true);
     try {
       const transactionsRef = collection(db, "transactions");
       const q = query(transactionsRef, orderBy("timestamp", "desc"));
-      const querySnapshot = await getDocs(q);
-      const transactionData = [];
-      querySnapshot.forEach((doc) => {
-        const data = doc.data();
-        transactionData.push({
-          id: doc.id,
-          ...data,
-          timestamp: data.timestamp?.toDate
-            ? data.timestamp.toDate()
-            : new Date(data.timestamp),
+      
+      const unsubscribe = onSnapshot(q, (querySnapshot) => {
+        const transactionData = [];
+        querySnapshot.forEach((doc) => {
+          const data = doc.data();
+          transactionData.push({
+            id: doc.id,
+            ...data,
+            timestamp: data.timestamp?.toDate
+              ? data.timestamp.toDate()
+              : new Date(data.timestamp),
+          });
         });
+        setTransactions(transactionData);
+        setFilteredTransactions(transactionData);
+        setLoading(false);
+      }, (error) => {
+        console.error("Error listening to transactions:", error);
+        setLoading(false);
       });
-      setTransactions(transactionData);
-      setFilteredTransactions(transactionData);
+
+      return unsubscribe;
     } catch (error) {
-      console.error("Error fetching transactions:", error);
-    } finally {
+      console.error("Error setting up transactions listener:", error);
       setLoading(false);
     }
   }, []);
 
-  // Fetch route data from Firestore
-  const fetchRoutes = useCallback(async () => {
+  // Real-time routes listener
+  const setupRoutesListener = useCallback(() => {
     try {
       const routesRef = collection(db, "routes");
-      const querySnapshot = await getDocs(routesRef);
-      const routesData = [];
-      querySnapshot.forEach((doc) => {
-        if (!routesData.includes(doc.data().Route)) {
-          routesData.push(doc.data().Route);
-        }
+      
+      const unsubscribe = onSnapshot(routesRef, (querySnapshot) => {
+        const routesData = [];
+        querySnapshot.forEach((doc) => {
+          if (!routesData.includes(doc.data().Route)) {
+            routesData.push(doc.data().Route);
+          }
+        });
+        setRoutes(routesData);
+      }, (error) => {
+        console.error("Error listening to routes:", error);
       });
-      setRoutes(routesData);
+
+      return unsubscribe;
     } catch (error) {
-      console.error("Error fetching routes:", error);
+      console.error("Error setting up routes listener:", error);
     }
   }, []);
 
@@ -430,17 +455,14 @@ const TransactionOverview = () => {
     setFilteredTransactions(transactions);
   };
 
-  // Refresh all data
-  const refreshAllData = async () => {
-    await Promise.all([
-      fetchTransactions(),
-      fetchRoutes(),
-      fetchUnits(),
-      fetchUnitLogs(),
-    ]);
-
+  // Manual refresh function (optional - for user-triggered refresh)
+  const refreshAllData = () => {
+    // Since we're using real-time listeners, this just triggers a re-render
+    // The data is already up-to-date from the listeners
+    setCurrentPage(1); // Reset to first page
+    
     // Log the refresh activity
-    await logSystemActivity("Refreshed Transaction Overview Data", userName);
+    logSystemActivity("Refreshed Transaction Overview Data", userName);
   };
 
   // Pagination functions
@@ -531,22 +553,30 @@ const TransactionOverview = () => {
     }
   };
 
+  // Setup real-time listeners
   useEffect(() => {
     const initData = async () => {
       await fetchUserRole();
-      await Promise.all([
-        fetchTransactions(),
-        fetchRoutes(),
-        fetchUnits(),
-        fetchUnitLogs(),
-      ]);
     };
     initData();
+
+    const unsubscribeTransactions = setupTransactionsListener();
+    const unsubscribeRoutes = setupRoutesListener();
+    const unsubscribeUnits = setupUnitsListener();
+    const unsubscribeUnitLogs = setupUnitLogsListener();
+
+    // Cleanup function to unsubscribe from listeners
+    return () => {
+      if (unsubscribeTransactions) unsubscribeTransactions();
+      if (unsubscribeRoutes) unsubscribeRoutes();
+      if (unsubscribeUnits) unsubscribeUnits();
+      if (unsubscribeUnitLogs) unsubscribeUnitLogs();
+    };
   }, [
-    fetchTransactions,
-    fetchRoutes,
-    fetchUnits,
-    fetchUnitLogs,
+    setupTransactionsListener,
+    setupRoutesListener,
+    setupUnitsListener,
+    setupUnitLogsListener,
     fetchUserRole,
   ]);
 

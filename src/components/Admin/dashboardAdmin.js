@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { Outlet, useLocation } from "react-router-dom";
-import { collection, query, getDocs, orderBy } from "firebase/firestore";
+import { collection, query, onSnapshot, orderBy } from "firebase/firestore";
 import { db } from "../../firebase";
 import { Pie, Bar, Line } from "react-chartjs-2";
 import {
@@ -119,49 +119,114 @@ const DashboardAnalytics = () => {
   const primaryColor = "#364C6E";
   const secondaryColor = "#405a88";
 
-  // Fetch transactions from Firestore
-  const fetchTransactions = useCallback(async () => {
+  // Real-time transactions listener
+  const setupTransactionsListener = useCallback(() => {
     setLoading(true);
     try {
       const transactionsRef = collection(db, "transactions");
       const q = query(transactionsRef, orderBy("timestamp", "desc"));
-      const querySnapshot = await getDocs(q);
-      const transactionData = [];
-      querySnapshot.forEach((doc) => {
-        const data = doc.data();
-        transactionData.push({
-          id: doc.id,
-          ...data,
-          timestamp: data.timestamp?.toDate
-            ? data.timestamp.toDate()
-            : new Date(data.timestamp),
+      
+      const unsubscribe = onSnapshot(q, (querySnapshot) => {
+        const transactionData = [];
+        querySnapshot.forEach((doc) => {
+          const data = doc.data();
+          transactionData.push({
+            id: doc.id,
+            ...data,
+            timestamp: data.timestamp?.toDate
+              ? data.timestamp.toDate()
+              : new Date(data.timestamp),
+          });
         });
+        setTransactions(transactionData);
+        setFilteredTransactions(transactionData);
+        setLoading(false);
+      }, (error) => {
+        console.error("Error listening to transactions:", error);
+        setLoading(false);
       });
-      setTransactions(transactionData);
-      setFilteredTransactions(transactionData);
+
+      // Return unsubscribe function for cleanup
+      return unsubscribe;
     } catch (error) {
-      console.error("Error fetching transactions:", error);
-    } finally {
+      console.error("Error setting up transactions listener:", error);
       setLoading(false);
     }
   }, []);
 
-  // Fetch route data from Firestore
-  const fetchRoutes = useCallback(async () => {
+  // Real-time routes listener
+  const setupRoutesListener = useCallback(() => {
     try {
       const routesRef = collection(db, "routes");
-      const querySnapshot = await getDocs(routesRef);
-      const routesData = [];
-      querySnapshot.forEach((doc) => {
-        if (!routesData.includes(doc.data().Route)) {
-          routesData.push(doc.data().Route);
-        }
+      
+      const unsubscribe = onSnapshot(routesRef, (querySnapshot) => {
+        const routesData = [];
+        querySnapshot.forEach((doc) => {
+          if (!routesData.includes(doc.data().Route)) {
+            routesData.push(doc.data().Route);
+          }
+        });
+        setRoutes(routesData);
+      }, (error) => {
+        console.error("Error listening to routes:", error);
       });
-      setRoutes(routesData);
+
+      return unsubscribe;
     } catch (error) {
-      console.error("Error fetching routes:", error);
+      console.error("Error setting up routes listener:", error);
     }
   }, []);
+
+  // Real-time quota listener
+  const setupQuotaListener = useCallback(() => {
+    try {
+      const quotaRef = collection(db, "quota");
+      
+      const unsubscribe = onSnapshot(quotaRef, (snapshot) => {
+        let metCount = 0;
+        let notMetCount = 0;
+
+        snapshot.forEach((doc) => {
+          const data = doc.data();
+          const lastUpdated = getDateFromTimestamp(data.lastUpdated);
+
+          let withinRange = true;
+          if (startDate || endDate) {
+            if (lastUpdated) {
+              const year = lastUpdated.getFullYear();
+              const month = String(lastUpdated.getMonth() + 1).padStart(2, "0");
+              const day = String(lastUpdated.getDate()).padStart(2, "0");
+              const lastUpdatedString = `${year}-${month}-${day}`;
+
+              if (startDate && endDate) {
+                withinRange =
+                  lastUpdatedString >= startDate && lastUpdatedString <= endDate;
+              } else if (startDate) {
+                withinRange = lastUpdatedString === startDate;
+              } else if (endDate) {
+                withinRange = lastUpdatedString <= endDate;
+              }
+            } else {
+              withinRange = false;
+            }
+          }
+
+          if (withinRange) {
+            if (data.isMet === true) metCount++;
+            else if (data.isMet === false) notMetCount++;
+          }
+        });
+
+        setQuotaStats({ quotaMet: metCount, quotaNotMet: notMetCount });
+      }, (error) => {
+        console.error("Error listening to quota:", error);
+      });
+
+      return unsubscribe;
+    } catch (error) {
+      console.error("Error setting up quota listener:", error);
+    }
+  }, [startDate, endDate]);
 
   // Filter transactions by date range, route, and driver search
   const filterTransactions = useCallback(() => {
@@ -207,51 +272,6 @@ const DashboardAnalytics = () => {
     setFilteredTransactions(filtered);
   }, [startDate, endDate, transactions, selectedRoute, driverSearch]);
 
-  const fetchQuota = useCallback(async () => {
-    try {
-      const quotaRef = collection(db, "quota");
-      const snapshot = await getDocs(quotaRef);
-
-      let metCount = 0;
-      let notMetCount = 0;
-
-      snapshot.forEach((doc) => {
-        const data = doc.data();
-        const lastUpdated = getDateFromTimestamp(data.lastUpdated);
-
-        let withinRange = true;
-        if (startDate || endDate) {
-          if (lastUpdated) {
-            const year = lastUpdated.getFullYear();
-            const month = String(lastUpdated.getMonth() + 1).padStart(2, "0");
-            const day = String(lastUpdated.getDate()).padStart(2, "0");
-            const lastUpdatedString = `${year}-${month}-${day}`;
-
-            if (startDate && endDate) {
-              withinRange =
-                lastUpdatedString >= startDate && lastUpdatedString <= endDate;
-            } else if (startDate) {
-              withinRange = lastUpdatedString === startDate;
-            } else if (endDate) {
-              withinRange = lastUpdatedString <= endDate;
-            }
-          } else {
-            withinRange = false;
-          }
-        }
-
-        if (withinRange) {
-          if (data.isMet === true) metCount++;
-          else if (data.isMet === false) notMetCount++;
-        }
-      });
-
-      setQuotaStats({ quotaMet: metCount, quotaNotMet: notMetCount });
-    } catch (error) {
-      console.error("Error fetching quota:", error);
-    }
-  }, [startDate, endDate]);
-
   // Calculate statistics
   const calculateStats = useCallback(() => {
     const newStats = {
@@ -296,6 +316,13 @@ const DashboardAnalytics = () => {
     setFilteredTransactions(transactions);
   };
 
+  // Manual refresh function (optional - for user-triggered refresh)
+  const refreshData = () => {
+    // Since we're using real-time listeners, this just triggers a re-render
+    // The data is already up-to-date from the listeners
+    setCurrentPage(1); // Reset to first page
+  };
+
   // Pagination functions
   const handleNextPage = () => {
     if (currentPage * transactionsPerPage < filteredTransactions.length) {
@@ -309,14 +336,19 @@ const DashboardAnalytics = () => {
     }
   };
 
+  // Setup real-time listeners
   useEffect(() => {
-    fetchTransactions();
-    fetchRoutes();
-  }, [fetchTransactions, fetchRoutes]);
+    const unsubscribeTransactions = setupTransactionsListener();
+    const unsubscribeRoutes = setupRoutesListener();
+    const unsubscribeQuota = setupQuotaListener();
 
-  useEffect(() => {
-    fetchQuota();
-  }, [fetchQuota]);
+    // Cleanup function to unsubscribe from listeners
+    return () => {
+      if (unsubscribeTransactions) unsubscribeTransactions();
+      if (unsubscribeRoutes) unsubscribeRoutes();
+      if (unsubscribeQuota) unsubscribeQuota();
+    };
+  }, [setupTransactionsListener, setupRoutesListener, setupQuotaListener]);
 
   useEffect(() => {
     filterTransactions();
@@ -574,7 +606,7 @@ const DashboardAnalytics = () => {
             Reset Filters
           </button>
           <button
-            onClick={fetchTransactions}
+            onClick={refreshData}
             className="px-4 py-2 text-white rounded-md hover:opacity-90 transition duration-200"
             style={{ backgroundColor: primaryColor }}
           >
