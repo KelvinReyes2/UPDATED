@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { Fuel, Lock, AlertTriangle, Loader2 } from "lucide-react";
+import { Fuel, Lock, AlertTriangle} from "lucide-react";
 import {
   collection,
   getDocs,
@@ -36,6 +36,7 @@ const FuelLogsPage = () => {
   const [passwordInput, setPasswordInput] = useState("");
   const [form, setForm] = useState({ driver: "", amount: "" });
   const [saving, setSaving] = useState(false);
+  const [updatingPrice, setUpdatingPrice] = useState(false);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState(null);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -321,6 +322,7 @@ const FuelLogsPage = () => {
     }
 
     try {
+      setUpdatingPrice(true);
       await signInWithEmailAndPassword(auth, user.email, passwordInput);
 
       const price = parseFloat(newPriceInput);
@@ -343,6 +345,8 @@ const FuelLogsPage = () => {
     } catch (err) {
       console.error(err);
       showError("Failed to update fuel price. Check your password.");
+    } finally {
+      setUpdatingPrice(false);
     }
   };
 
@@ -769,6 +773,8 @@ const FuelLogsPage = () => {
                 persistTableHead
                 responsive
                 pagination
+                paginationPerPage={10}
+                paginationRowsPerPageOptions={[10]}
                 paginationComponentOptions={{ noRowsPerPage: true }}
                 fixedHeader
                 fixedHeaderScrollHeight="70vh"
@@ -886,8 +892,28 @@ const FuelLogsPage = () => {
                     onClick={saveFuelExpense}
                     disabled={saving}
                   >
-                    {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-                    {saving ? "Saving..." : "Save"}
+                     {saving && (
+                  <svg
+                    className="h-4 w-4 animate-spin"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    />
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8v4A4 4 0 004 12z"
+                    />
+                  </svg>
+                )}
+                {saving ? "Saving..." : "Save"}
                   </button>
                 </div>
               </div>
@@ -1003,17 +1029,40 @@ const FuelLogsPage = () => {
                 <div className="px-8 py-6 border-t bg-gray-50/50 backdrop-blur flex justify-end gap-4">
                   <button
                     onClick={() => setIsPriceModalOpen(false)}
-                    className="px-6 py-3 rounded-lg bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 font-medium transition"
+                    disabled={updatingPrice}
+                    className="px-6 py-3 rounded-lg bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 font-medium transition disabled:opacity-60"
                   >
                     Cancel
                   </button>
                   <button
                     onClick={saveFuelPrice}
-                    className="px-6 py-3 rounded-lg text-white font-medium hover:opacity-90 transition inline-flex items-center gap-2"
+                    disabled={updatingPrice}
+                    className="px-6 py-3 rounded-lg text-white font-medium hover:opacity-90 transition inline-flex items-center gap-2 disabled:opacity-60"
                     style={{ backgroundColor: primaryColor }}
                   >
-                    <Lock className="h-4 w-4" />
-                    Update Price
+                    {updatingPrice && (
+                      <svg
+                        className="h-4 w-4 animate-spin"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                      >
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                        />
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8v4A4 4 0 004 12z"
+                        />
+                      </svg>
+                    )}
+                    {!updatingPrice && <Lock className="h-4 w-4" />}
+                    {updatingPrice ? "Updating..." : "Update Price"}
                   </button>
                 </div>
               </div>
@@ -1236,4 +1285,3 @@ const FuelLogsPage = () => {
 };
 
 export default FuelLogsPage;
-                    

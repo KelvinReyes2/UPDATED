@@ -378,33 +378,38 @@ export default function DashboardSuper() {
 
   const requestColumns = [
     {
-       name: "User",
-    selector: (row) => row.user,
-    sortable: true,
-    width: "300px",
-    cell: (row) => (
-      <div className="py-1">
-        <div className="font-semibold text-gray-900 text-sm flex items-center">
-          <div 
-            className="w-8 h-8 rounded-full flex items-center justify-center mr-3"
-            style={{ backgroundColor: '#b4ffe2ff' }}
-          >
-            <span 
-              className="font-semibold text-xs"
-              style={{ color: '#348b47ff' }}
+      name: "User",
+      selector: (row) => row.user,
+      sortable: true,
+      width: "300px",
+      cell: (row) => (
+        <div className="py-1">
+          <div className="font-semibold text-gray-900 text-sm flex items-center">
+            <div 
+              className="w-8 h-8 rounded-full flex items-center justify-center mr-3"
+              style={{ backgroundColor: '#b4ffe2ff' }}
             >
-              {(row.user || "U").charAt(0).toUpperCase()}
-            </span>
+              <span 
+                className="font-semibold text-xs"
+                style={{ color: '#348b47ff' }}
+              >
+                {(row.user || "U").charAt(0).toUpperCase()}
+              </span>
+            </div>
+            {row.user}
           </div>
-          {row.user}
         </div>
-      </div>
       ),
     },
     {
       name: "Requested At",
       selector: (row) => row.requestedAt?.seconds || 0,
       sortable: true,
+      sortFunction: (rowA, rowB) => {
+        const timeA = rowA.requestedAt?.seconds || 0;
+        const timeB = rowB.requestedAt?.seconds || 0;
+        return timeB - timeA; // Descending order (most recent first)
+      },
       width: "250px",
       cell: (row) => {
         const { relativeTime, fullDate } = formatTimestamp(row.requestedAt);
@@ -686,10 +691,12 @@ export default function DashboardSuper() {
                   customStyles={customStyles}
                   highlightOnHover
                   pagination
-                  paginationPerPage={6}
-                  paginationRowsPerPageOptions={[6, 10, 15]}
+                  paginationPerPage={5}
+                  paginationRowsPerPageOptions={[5, 10, 15]}
                   fixedHeader
                   fixedHeaderScrollHeight="420px"
+                  defaultSortFieldId={2}
+                  defaultSortAsc={false}
                   noDataComponent={
                     <div className="py-12 text-center">
                       <div className="text-gray-400 text-lg mb-2">
