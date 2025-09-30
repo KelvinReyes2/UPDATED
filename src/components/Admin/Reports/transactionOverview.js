@@ -276,7 +276,7 @@ const TransactionOverview = () => {
     }
   }, []);
 
-  // Get unit for a specific transaction based on driverUID and transaction date
+  // FIXED: Get unit for a specific transaction based on driverUID and transaction date
   const getUnitForTransaction = (driverUID, transactionTimestamp) => {
     if (!driverUID || !transactionTimestamp) return "No Unit Assigned";
 
@@ -285,24 +285,47 @@ const TransactionOverview = () => {
 
     const transactionDateString = getDateString(transactionDate);
 
+    console.log("Looking for unit assignment:", {
+      driverUID,
+      transactionDate: transactionDateString,
+      unitLogsCount: unitLogs.length
+    });
+
     // Find matching unit log for this driver on this date
     const matchingLog = unitLogs.find((log) => {
-      if (log.unitHolder !== driverUID) return false;
+      // Check if the unitHolder matches the driverUID
+      if (log.unitHolder !== driverUID) {
+        return false;
+      }
 
-      const assignedDate = getDateFromTimestamp(log.assigned);
-      if (!assignedDate) return false;
+      // Get the assigned date from the log
+      const assignedDate = getDateFromTimestamp(log.assignedAt || log.assigned);
+      if (!assignedDate) {
+        console.log("No assigned date found for log:", log.id);
+        return false;
+      }
 
       const assignedDateString = getDateString(assignedDate);
+
+      console.log("Comparing dates:", {
+        logId: log.id,
+        unit: log.unit,
+        assignedDate: assignedDateString,
+        transactionDate: transactionDateString,
+        matches: assignedDateString === transactionDateString
+      });
 
       // Check if the transaction date matches the assigned date
       return assignedDateString === transactionDateString;
     });
 
-    // Only return unit from unitLogs - no fallback to prevent overwriting historical data
+    // Return the unit if found
     if (matchingLog && matchingLog.unit) {
+      console.log("Found matching unit:", matchingLog.unit);
       return matchingLog.unit;
     }
 
+    console.log("No matching unit found for driver:", driverUID, "on date:", transactionDateString);
     return "No Unit Assigned";
   };
 
