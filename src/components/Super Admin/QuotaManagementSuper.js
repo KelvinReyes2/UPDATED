@@ -45,6 +45,35 @@ export default function QuotaManagementSuper() {
   const [passwordError, setPasswordError] = useState("");
   const [resetPasswordError, setResetPasswordError] = useState("");
   const [currentUser, setCurrentUser] = useState(null);
+  const [userRole, setUserRole] = useState("User");
+
+  // Function to map user roles to display roles for logging
+  const ROLE_MAPPING = {
+    Admin: "System Admin",
+    Super: "Super Admin",
+  };
+
+  const mapRoleForLogging = (role) => {
+    return ROLE_MAPPING[role] || null;
+  };
+
+  // Function to log system activities with mapped role
+  const logSystemActivity = async (activity, performedBy, role = null) => {
+    try {
+      const actualRole = role || userRole;
+      const displayRole = mapRoleForLogging(actualRole);
+
+      await addDoc(collection(db, "systemLogs"), {
+        activity,
+        performedBy,
+        role: displayRole,
+        timestamp: serverTimestamp(),
+      });
+      console.log("System activity logged successfully");
+    } catch (error) {
+      console.error("Error logging system activity:", error);
+    }
+  };
 
   // Fetch latest quota document to display current quota
   useEffect(() => {
@@ -91,7 +120,9 @@ export default function QuotaManagementSuper() {
           const docSnap = await getDoc(docRef);
 
           if (docSnap.exists()) {
-            setCurrentUser(docSnap.data()); // {firstName, lastName, role, etc.}
+            const userData = docSnap.data();
+            setCurrentUser(userData);
+            setUserRole(userData.role || "User");
           }
         }
       } catch (err) {
@@ -202,14 +233,6 @@ export default function QuotaManagementSuper() {
 
     if (hasError) return;
 
-    if (currentUser) {
-      await saveSystemLog(
-        "Updated the Quota",
-        `${currentUser.firstName} ${currentUser.lastName}`,
-        currentUser.role
-      );
-    }
-
     setPassword("");
     setPasswordError("");
     setIsModalOpen(true);
@@ -270,6 +293,16 @@ export default function QuotaManagementSuper() {
           endDate: { toDate: () => end },
         });
 
+        // Log the quota update activity
+        const userFullName = currentUser?.firstName && currentUser?.lastName 
+          ? `${currentUser.firstName} ${currentUser.lastName}`.trim()
+          : user.email || "Unknown User";
+
+        await logSystemActivity(
+          `Updated quota to ₱${value.toLocaleString()}`,
+          userFullName
+        );
+
         setNewQuota("");
         setConfirmQuota("");
         setPassword("");
@@ -289,20 +322,6 @@ export default function QuotaManagementSuper() {
       setPasswordError("Incorrect password. Please try again.");
     } finally {
       setSaving(false);
-    }
-  };
-
-  const saveSystemLog = async (activity, performedBy, role) => {
-    try {
-      await addDoc(collection(db, "systemLogs"), {
-        activity,
-        performedBy, // e.g. "Erwin Jay Mendoza"
-        role, // e.g. "Admin"
-        timestamp: serverTimestamp(),
-      });
-      console.log("System log saved!");
-    } catch (err) {
-      console.error("Error saving log:", err);
     }
   };
 
@@ -342,6 +361,16 @@ export default function QuotaManagementSuper() {
 
         // Clear current quota data to enable fields
         setCurrentQuotaData(null);
+
+        // Log the reset activity
+        const userFullName = currentUser?.firstName && currentUser?.lastName 
+          ? `${currentUser.firstName} ${currentUser.lastName}`.trim()
+          : user.email || "Unknown User";
+
+        await logSystemActivity(
+          "Reset quota fields for new quota setting",
+          userFullName
+        );
 
         setToastMessage(
           "Quota fields have been reset. You can now set a new quota."

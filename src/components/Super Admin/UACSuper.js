@@ -4,7 +4,7 @@ import { Outlet, useLocation } from "react-router-dom";
 import DataTable from "react-data-table-component";
 import { FaEye } from "react-icons/fa";
 import { db } from "../../firebase";
-import { collection, onSnapshot, doc, setDoc, addDoc, serverTimestamp } from "firebase/firestore";
+import { collection, onSnapshot, doc, setDoc, addDoc, serverTimestamp, getDoc } from "firebase/firestore";
 
 export default function UACSuper() {
   const [showSuccessToast, setShowSuccessToast] = useState(false);
@@ -25,10 +25,62 @@ export default function UACSuper() {
   const [viewing, setViewing] = useState(null);
   const [edit, setEdit] = useState(null);
   const [savingEdit, setSavingEdit] = useState(false);
+  const [userRole, setUserRole] = useState("User");
 
   const auth = getAuth();
   const currentUser = auth.currentUser;
   const userName = currentUser?.displayName || currentUser?.email || "Unknown User";
+
+  // Function to fetch user role
+  const fetchUserRole = async () => {
+    if (!currentUser?.uid) {
+      setUserRole("Guest");
+      return;
+    }
+
+    try {
+      const userDocRef = doc(db, "users", currentUser.uid);
+      const userDocSnap = await getDoc(userDocRef);
+
+      if (userDocSnap.exists()) {
+        const userData = userDocSnap.data();
+        setUserRole(userData.role || "User");
+      } else {
+        setUserRole("User");
+      }
+    } catch (error) {
+      console.error("Error fetching user role:", error);
+      setUserRole("User");
+    }
+  };
+
+  // Function to map user roles to display roles for logging
+  const ROLE_MAPPING = {
+    Admin: "System Admin",
+    Super: "Super Admin",
+  };
+
+  const mapRoleForLogging = (role) => {
+    return ROLE_MAPPING[role] || null;
+  };
+
+  // Function to log system activities with mapped role
+  const logSystemActivity = async (activity, performedBy, role = null) => {
+    try {
+      const actualRole = role || userRole;
+      const displayRole = mapRoleForLogging(actualRole);
+
+      await addDoc(collection(db, "systemLogs"), {
+        activity,
+        performedBy,
+        role: displayRole,
+        timestamp: serverTimestamp(),
+      });
+      console.log("System activity logged successfully");
+    } catch (error) {
+      console.error("Error logging system activity:", error);
+    }
+  };
 
   // Updated available permissions to match actual admin permissions
   // Permissions grouped by role (copied from App.js)
@@ -57,20 +109,9 @@ export default function UACSuper() {
   // Available roles (aligning with your system)
   const availableRoles = ["Admin", "Cashier", "Super"];
 
-  // Function to log system activities
-  const logSystemActivity = async (activity, performedBy, role = "Super Admin") => {
-    try {
-      await addDoc(collection(db, "systemLogs"), {
-        activity,
-        performedBy,
-        role,
-        timestamp: serverTimestamp(),
-      });
-      console.log("Activity logged successfully");
-    } catch (error) {
-      console.error("Error logging activity:", error);
-    }
-  };
+  useEffect(() => {
+    fetchUserRole();
+  }, []);
 
   useEffect(() => {
     if (!isUACPage) return;
@@ -329,8 +370,8 @@ export default function UACSuper() {
         activityMessage = `Updated permissions for ${userFullName} (${newRoleDisplay})`;
       }
 
-      // Log the activity
-      await logSystemActivity(activityMessage, userName, "Super Admin");
+      // Log the activity using the proper role mapping
+      await logSystemActivity(activityMessage, userName);
 
       setViewing(null);
       setEdit(null);
