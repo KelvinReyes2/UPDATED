@@ -249,7 +249,7 @@ export default function RouteManagementSuper() {
     r.KM,
     r.Status,
   ]);
-  const handleExportToCSV = () => {
+  const handleExportToCSV = async () => {
     if (!filtered || filtered.length === 0) {
       alert("No data to export.");
       return;
@@ -261,9 +261,22 @@ export default function RouteManagementSuper() {
       currentUser.email || "Unknown",
       "Route Management"
     );
+
+    if (user) {
+      try {
+        await saveSystemLog(
+          "Exported Route Management Report to CSV",
+          `${user.firstName} ${user.lastName}`,
+          "Super Admin"
+        );
+        console.log("Export log saved successfully.");
+      } catch (err) {
+        console.error("Failed to save export log:", err);
+      }
+    }
   };
 
-  const handleExportToPDF = () => {
+  const handleExportToPDF = async () => {
     if (!filtered || filtered.length === 0) {
       alert("No data to export.");
       return;
@@ -275,6 +288,19 @@ export default function RouteManagementSuper() {
       "Route_Management.pdf",
       currentUser.email || "Unknown"
     );
+
+    if (user) {
+      try {
+        await saveSystemLog(
+          "Exported Route Management Report to PDF",
+          `${user.firstName} ${user.lastName}`,
+          "Super Admin"
+        );
+        console.log("Export log saved successfully.");
+      } catch (err) {
+        console.error("Failed to save export log:", err);
+      }
+    }
   };
 
   // -------------------- TABLE COLUMNS --------------------

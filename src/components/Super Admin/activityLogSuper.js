@@ -5,7 +5,14 @@ import { formatDistanceToNow, format } from "date-fns";
 import { exportToCSV, exportToPDF } from "../functions/exportFunctions";
 
 import { db } from "../../firebase";
-import { collection, onSnapshot } from "firebase/firestore";
+import {
+  collection,
+  onSnapshot,
+  doc,
+  getDoc,
+  addDoc,
+  serverTimestamp,
+} from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 
 export default function ActivityLogSuper() {
@@ -26,6 +33,8 @@ export default function ActivityLogSuper() {
   const [filterEndDate, setFilterEndDate] = useState(""); // End date filter
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [user, setCurrentUser] = useState(null);
+  const [userRole, setUserRole] = useState("User");
 
   const auth = getAuth();
   const currentUser = auth.currentUser;
@@ -33,6 +42,34 @@ export default function ActivityLogSuper() {
   const primaryColor = "#364C6E";
 
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+
+  // Function to map user roles to display roles for logging
+  const ROLE_MAPPING = {
+    Admin: "System Admin",
+    Super: "Super Admin",
+  };
+
+  const mapRoleForLogging = (role) => {
+    return ROLE_MAPPING[role] || null;
+  };
+
+  // Function to log system activities with mapped role
+  const logSystemActivity = async (activity, performedBy, role = null) => {
+    try {
+      const actualRole = role || userRole;
+      const displayRole = mapRoleForLogging(actualRole);
+
+      await addDoc(collection(db, "systemLogs"), {
+        activity,
+        performedBy,
+        role: displayRole,
+        timestamp: serverTimestamp(),
+      });
+      console.log("System activity logged successfully");
+    } catch (error) {
+      console.error("Error logging system activity:", error);
+    }
+  };
 
   const toggleDropdown = () => {
     setIsDropdownOpen((prev) => !prev);
@@ -126,12 +163,11 @@ export default function ActivityLogSuper() {
             timestamp: data.timestamp || null,
             performedBy: data.performedBy || "Unknown User",
             activity: data.activity || "No activity description",
-            role: data.role || "Unknown Role", // Added role
+            role: data.role || "Unknown Role",
           };
           temp.push(logEntry);
         });
 
-        // Sort by timestamp in descending order (most recent first)
         temp.sort((a, b) => {
           const timeA = a.timestamp?.seconds || a.timestamp?.getTime?.() || 0;
           const timeB = b.timestamp?.seconds || b.timestamp?.getTime?.() || 0;
@@ -149,6 +185,28 @@ export default function ActivityLogSuper() {
 
     return () => unsub();
   }, []); // Runs only once when component mounts
+
+  useEffect(() => {
+    const fetchCurrentUser = async () => {
+      try {
+        const user = auth.currentUser;
+
+        if (user) {
+          const docRef = doc(db, "users", user.uid);
+          const docSnap = await getDoc(docRef);
+
+          if (docSnap.exists()) {
+            const userData = docSnap.data();
+            setCurrentUser(userData);
+            setUserRole(userData.role || "User");
+          }
+        }
+      } catch (err) {
+        console.error("Error fetching current user:", err);
+      }
+    };
+    fetchCurrentUser();
+  }, []);
 
   const filteredLogs = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -200,11 +258,12 @@ export default function ActivityLogSuper() {
   ]);
 
   // CSV Export
-  const handleExportToCSV = () => {
+  const handleExportToCSV = async () => {
     if (!filteredLogs || filteredLogs.length === 0) {
       alert("No data to export.");
       return;
     }
+
     exportToCSV(
       headers,
       exportRows,
@@ -212,10 +271,26 @@ export default function ActivityLogSuper() {
       currentUser?.email || "Unknown",
       "Activity Log"
     );
+
+    if (user) {
+      try {
+        const userFullName = user.firstName && user.lastName 
+          ? `${user.firstName} ${user.lastName}`.trim()
+          : currentUser?.email || "Unknown User";
+
+        await logSystemActivity(
+          "Exported Activity Log Report to CSV",
+          userFullName
+        );
+        console.log("Export log saved successfully.");
+      } catch (err) {
+        console.error("Failed to save export log:", err);
+      }
+    }
   };
 
   // PDF Export
-  const handleExportToPDF = () => {
+  const handleExportToPDF = async () => {
     if (!filteredLogs || filteredLogs.length === 0) {
       alert("No data to export.");
       return;
@@ -227,6 +302,22 @@ export default function ActivityLogSuper() {
       "Activity_Log.pdf",
       currentUser?.email || "Unknown"
     );
+
+    if (user) {
+      try {
+        const userFullName = user.firstName && user.lastName 
+          ? `${user.firstName} ${user.lastName}`.trim()
+          : currentUser?.email || "Unknown User";
+
+        await logSystemActivity(
+          "Exported Activity Log Report to PDF",
+          userFullName
+        );
+        console.log("Export log saved successfully.");
+      } catch (err) {
+        console.error("Failed to save export log:", err);
+      }
+    }
   };
 
   const columns = [

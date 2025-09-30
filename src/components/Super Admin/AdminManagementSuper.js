@@ -209,7 +209,7 @@ export default function AdminManagementSuper() {
     r.status,
   ]);
 
-  const handleExportToCSV = () => {
+  const handleExportToCSV = async () => {
     if (!filteredWithRowNumber || filteredWithRowNumber.length === 0) {
       alert("No data to export.");
       return;
@@ -221,9 +221,22 @@ export default function AdminManagementSuper() {
       currentUser?.email || "Unknown",
       "Admin Management"
     );
+
+    if (user) {
+      try {
+        await saveSystemLog(
+          "Exported Admin Management Report to CSV",
+          `${user.firstName} ${user.lastName}`,
+          "Super Admin"
+        );
+        console.log("Export log saved successfully.");
+      } catch (err) {
+        console.error("Failed to save export log:", err);
+      }
+    }
   };
 
-  const handleExportToPDF = () => {
+  const handleExportToPDF = async () => {
     if (!filteredWithRowNumber || filteredWithRowNumber.length === 0) {
       alert("No data to export.");
       return;
@@ -235,6 +248,19 @@ export default function AdminManagementSuper() {
       "Admin_Management.pdf",
       currentUser?.email || "Unknown"
     );
+
+    if (user) {
+      try {
+        await saveSystemLog(
+          "Exported Admin Management Report to CSV",
+          `${user.firstName} ${user.lastName}`,
+          "Super Admin"
+        );
+        console.log("Export log saved successfully.");
+      } catch (err) {
+        console.error("Failed to save export log:", err);
+      }
+    }
   };
 
   const columns = [
