@@ -68,6 +68,10 @@ function App() {
     return () => unsub();
   }, []);
 
+  if (loading) {
+    return null;
+  }
+
   return (
     <Router>
       <Routes>
