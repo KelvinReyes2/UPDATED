@@ -387,7 +387,7 @@ const QuotaSummary = () => {
 
   // Reset filters function
   const resetFilters = () => {
-    setFilterStartDate("");
+    setFilterStartDate(getTodayDate());
     setFilterEndDate("");
     setDriverSearch("");
     setFilterStatus("");
