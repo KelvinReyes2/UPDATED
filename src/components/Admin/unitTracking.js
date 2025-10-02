@@ -29,7 +29,7 @@ export default function UnitTracking() {
   const markersRef = useRef([]);
 
   // Check if a date is today
-  const isToday = useCallback((date) => {
+  const isToday = (date) => {
     const today = new Date();
     const checkDate = new Date(date);
     return (
@@ -37,7 +37,7 @@ export default function UnitTracking() {
       checkDate.getMonth() === today.getMonth() &&
       checkDate.getFullYear() === today.getFullYear()
     );
-  }, []);
+  };
 
   // Fetch unit tracking data
   useEffect(() => {
@@ -149,7 +149,29 @@ export default function UnitTracking() {
     );
     const routes = todayUnits.map((unit) => unit.route);
     return ["All Routes", ...new Set(routes)];
-  }, [unitTrackingData, isToday]);
+  }, [unitTrackingData]);
+
+  // Filter units based on selected route, search term, and updatedAt today
+  const getFilteredUnits = useCallback(() => {
+    // Filter by updatedAt today only
+    let filtered = unitTrackingData.filter((trackingUnit) =>
+      isToday(trackingUnit.updatedAt)
+    );
+
+    if (selectedRoute !== "All Routes") {
+      filtered = filtered.filter((unit) => unit.route === selectedRoute);
+    }
+
+    if (searchTerm) {
+      filtered = filtered.filter(
+        (unit) =>
+          unit.vehicleId.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          unit.route.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+
+    return filtered;
+  }, [unitTrackingData, selectedRoute, searchTerm]);
 
   const getParticular = useCallback(
     (unitHolder) => {
@@ -228,9 +250,15 @@ export default function UnitTracking() {
     return `${Math.floor(diffInMinutes / 1440)}d ago`;
   }, []);
 
-  // Filter units based on selected route, search term, and updatedAt today
-  const filteredUnits = useMemo(() => {
-    return mergedDataTracking
+  const updateMapMarkers = useCallback(() => {
+    if (!leafletMap.current || !window.L) return;
+
+    markersRef.current.forEach((marker) =>
+      leafletMap.current.removeLayer(marker)
+    );
+    markersRef.current = [];
+
+    const filteredUnits = mergedDataTracking
       .filter((ut) => isToday(ut.updatedAt))
       .filter(
         (ut) => selectedRoute === "All Routes" || ut.route === selectedRoute
@@ -241,23 +269,20 @@ export default function UnitTracking() {
           ut.unitId.toLowerCase().includes(searchTerm.toLowerCase()) ||
           ut.route.toLowerCase().includes(searchTerm.toLowerCase())
       );
-  }, [mergedDataTracking, selectedRoute, searchTerm, isToday]);
-
-  const updateMapMarkers = useCallback(() => {
-    if (!leafletMap.current || !window.L) return;
-
-    markersRef.current.forEach((marker) =>
-      leafletMap.current.removeLayer(marker)
-    );
-    markersRef.current = [];
 
     if (filteredUnits.length === 0) return;
 
     filteredUnits.forEach((unitTracking) => {
-      const vehicleId = unitTracking.vehicleId;
-      const unitHolderId = unitTracking.unitHolder;
+      // Find the unit info from 'unit' collection
+      const unitData = unitsData.find((u) => u.unitID === unitTracking.unitID);
+      const unitHolderId =
+        selectedUnit?.unitHolder ||
+        driverLogs.find((dl) => dl.vehicleID === selectedUnit?.vehicleId)
+          ?.personnelID ||
+        null;
+      const vehicleId = unitData?.vehicleID || unitTracking.unitID;
 
-      // Get driver name
+      // Get driver name from driver logs
       const driverName = unitHolderId
         ? getDriverName(unitHolderId)
         : "No Driver Found";
@@ -267,8 +292,8 @@ export default function UnitTracking() {
 
       // Determine icon color based on vehicle status
       const iconColor =
-        unitTracking.status?.toLowerCase() === "active" ||
-        unitTracking.status?.toLowerCase() === "moving"
+        unitData?.status?.toLowerCase() === "active" ||
+        unitData?.status?.toLowerCase() === "moving"
           ? "#10b981"
           : "#6b7280";
 
@@ -342,7 +367,8 @@ export default function UnitTracking() {
       leafletMap.current.fitBounds(group.getBounds().pad(0.1));
     }
   }, [
-    filteredUnits,
+    getFilteredUnits,
+    unitsData,
     getDriverName,
     getStatusInfo,
     getTimeAgo,
@@ -380,18 +406,20 @@ export default function UnitTracking() {
               attribution:
                 '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
               subdomains: "abcd",
-              maxZoom: 19,
+              maxZoom: 10,
             }
           ).addTo(leafletMap.current);
+
+          updateMapMarkers();
         }
       };
       document.head.appendChild(script);
     }
-  }, []);
+  }, [updateMapMarkers]);
 
   // Update markers when data changes
   useEffect(() => {
-    if (leafletMap.current && window.L) {
+    if (leafletMap.current) {
       updateMapMarkers();
     }
   }, [updateMapMarkers]);
@@ -401,15 +429,12 @@ export default function UnitTracking() {
     if (selectedUnit && leafletMap.current) {
       leafletMap.current.setView(
         [selectedUnit.latitude, selectedUnit.longitude],
-        16
+        25
       );
-    } else if (!selectedUnit && leafletMap.current && filteredUnits.length > 0) {
-      const group = new window.L.featureGroup(markersRef.current);
-      if (group.getBounds().isValid()) {
-        leafletMap.current.fitBounds(group.getBounds().pad(0.1));
-      }
+    } else if (!selectedUnit && leafletMap.current) {
+      updateMapMarkers(); // Refocus on all units
     }
-  }, [selectedUnit, filteredUnits.length]);
+  }, [selectedUnit, updateMapMarkers]);
 
   // Handle unit selection - toggle selection
   const handleUnitSelection = (unit) => {
@@ -421,6 +446,18 @@ export default function UnitTracking() {
       setSelectedUnit(unit);
     }
   };
+
+  const filteredUnits = mergedDataTracking
+    .filter((ut) => isToday(ut.updatedAt))
+    .filter(
+      (ut) => selectedRoute === "All Routes" || ut.route === selectedRoute
+    )
+    .filter(
+      (ut) =>
+        !searchTerm ||
+        ut.unitId.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        ut.route.toLowerCase().includes(searchTerm.toLowerCase())
+    );
 
   if (isLoading) {
     return (
