@@ -56,6 +56,10 @@ const TripLogs = () => {
   const [err, setErr] = useState(null);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [userRole, setUserRole] = useState("User");
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(10);
 
   const primaryColor = "#364C6E";
 
@@ -364,48 +368,73 @@ const TripLogs = () => {
     setSelectedStartDate(getTodayDate());
     setSelectedEndDate("");
     setDriverSearch("");
+    setCurrentPage(1);
   };
 
   const filteredUsers = getFilteredUsers();
 
+  // Pagination calculations
+  const indexOfLastItem = currentPage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const currentItems = filteredUsers.slice(indexOfFirstItem, indexOfLastItem);
+  const totalPages = Math.ceil(filteredUsers.length / itemsPerPage);
+
+  // Pagination handlers
+  const handleNextPage = () => {
+    if (currentPage < totalPages) {
+      setCurrentPage(currentPage + 1);
+    }
+  };
+
+  const handlePrevPage = () => {
+    if (currentPage > 1) {
+      setCurrentPage(currentPage - 1);
+    }
+  };
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedRoute, driverSearch, selectedStartDate, selectedEndDate]);
+
   // Export functions
   const handleExportCSV = async () => {
-  try {
-    exportToCSV(
-      headers,
-      rows,
-      "Trip-Logs-Report.csv",
-      userName,
-      "Trip-Logs-Report",
-      selectedStartDate,
-      selectedEndDate
-    );
+    try {
+      exportToCSV(
+        headers,
+        rows,
+        "Trip-Logs-Report.csv",
+        userName,
+        "Trip-Logs-Report",
+        selectedStartDate,
+        selectedEndDate
+      );
 
-    await logSystemActivity("Exported Trip Logs Report to CSV", userName);
-    setIsDropdownOpen(false);
-  } catch (error) {
-    console.error("Error during CSV export:", error);
-  }
-};
+      await logSystemActivity("Exported Trip Logs Report to CSV", userName);
+      setIsDropdownOpen(false);
+    } catch (error) {
+      console.error("Error during CSV export:", error);
+    }
+  };
 
   const handleExportPDF = async () => {
-  try {
-    exportToPDF(
-      headers,
-      rows,
-      "Trip-Logs-Report",
-      "Trip-Logs-Report.pdf",
-      userName,
-      selectedStartDate,
-      selectedEndDate
-    );
+    try {
+      exportToPDF(
+        headers,
+        rows,
+        "Trip-Logs-Report",
+        "Trip-Logs-Report.pdf",
+        userName,
+        selectedStartDate,
+        selectedEndDate
+      );
 
-    await logSystemActivity("Exported Trip Logs Report to PDF", userName);
-    setIsDropdownOpen(false);
-  } catch (error) {
-    console.error("Error during PDF export:", error);
-  }
-};
+      await logSystemActivity("Exported Trip Logs Report to PDF", userName);
+      setIsDropdownOpen(false);
+    } catch (error) {
+      console.error("Error during PDF export:", error);
+    }
+  };
 
   // Setup real-time listeners
   useEffect(() => {
@@ -723,7 +752,7 @@ const TripLogs = () => {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {filteredUsers.length === 0 ? (
+                {currentItems.length === 0 ? (
                   <tr>
                     <td
                       colSpan={5}
@@ -733,7 +762,7 @@ const TripLogs = () => {
                     </td>
                   </tr>
                 ) : (
-                  filteredUsers.map((user) => {
+                  currentItems.map((user) => {
                     const cashFare = getDriverFareByMethod(user.id, "Cash");
                     const cardFare = getDriverFareByMethod(user.id, "Card");
                     const totalFare = cashFare + cardFare;
@@ -763,10 +792,97 @@ const TripLogs = () => {
               </tbody>
             </table>
           </div>
+
+          {/* Pagination Controls */}
+         {/* Pagination Controls */}
+          {filteredUsers.length > 0 && (
+            <div className="px-6 py-4 border-t flex items-center justify-between">
+              <div className="text-sm text-gray-500">
+                {indexOfFirstItem + 1}-{Math.min(indexOfLastItem, filteredUsers.length)} of {filteredUsers.length}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCurrentPage(1)}
+                  disabled={currentPage === 1}
+                  className="p-2 rounded hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent transition"
+                  title="First page"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="h-5 w-5 text-gray-600"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M11 17l-5-5 5-5M18 17l-5-5 5-5" />
+                  </svg>
+                </button>
+                <button
+                  onClick={handlePrevPage}
+                  disabled={currentPage === 1}
+                  className="p-2 rounded hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent transition"
+                  title="Previous page"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="h-5 w-5 text-gray-600"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M15 18l-6-6 6-6" />
+                  </svg>
+                </button>
+                <button
+                  onClick={handleNextPage}
+                  disabled={currentPage === totalPages}
+                  className="p-2 rounded hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent transition"
+                  title="Next page"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="h-5 w-5 text-gray-600"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M9 18l6-6-6-6" />
+                  </svg>
+                </button>
+                <button
+                  onClick={() => setCurrentPage(totalPages)}
+                  disabled={currentPage === totalPages}
+                  className="p-2 rounded hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent transition"
+                  title="Last page"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="h-5 w-5 text-gray-600"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M13 17l5-5-5-5M6 17l5-5-5-5" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </main>
   );
 };
-
 export default TripLogs;
