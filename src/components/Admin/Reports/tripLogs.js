@@ -358,6 +358,14 @@ const TripLogs = () => {
     );
   };
 
+  // Reset filters function
+  const resetFilters = () => {
+    setSelectedRoute("");
+    setSelectedStartDate(getTodayDate());
+    setSelectedEndDate("");
+    setDriverSearch("");
+  };
+
   const filteredUsers = getFilteredUsers();
 
   // Export functions
@@ -535,6 +543,19 @@ const TripLogs = () => {
                     </svg>
                   </div>
                 </div>
+              </div>
+
+              {/* Reset Button */}
+              <div className="flex flex-col">
+                <label className="text-sm font-medium text-gray-700 mb-1 opacity-0">
+                  Reset
+                </label>
+                <button
+                  onClick={resetFilters}
+                  className="px-4 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600 transition duration-200"
+                >
+                  Reset Filters
+                </button>
               </div>
 
               {/* Export */}

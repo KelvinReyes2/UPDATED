@@ -452,7 +452,6 @@ const TransactionOverview = () => {
     setEndDate("");
     setSelectedRoute("");
     setSearch("");
-    setFilteredTransactions(transactions);
   };
 
   // Pagination functions

@@ -6,6 +6,7 @@ import {
   orderBy,
   addDoc,
   serverTimestamp,
+  where,
 } from "firebase/firestore";
 import { db } from "../../../firebase";
 import { CheckCircle, XCircle } from "lucide-react";
@@ -39,16 +40,11 @@ const getTodayDate = () => {
 // Helper function to convert timestamp to Date object
 const getDateFromTimestamp = (timestamp) => {
   try {
-    // Handle Firestore Timestamp
     if (timestamp && typeof timestamp.toDate === "function") {
       return timestamp.toDate();
-    }
-    // Handle timestamp object with seconds property (Firestore)
-    else if (timestamp && timestamp.seconds) {
+    } else if (timestamp && timestamp.seconds) {
       return new Date(timestamp.seconds * 1000);
-    }
-    // Handle JavaScript Date
-    else if (timestamp instanceof Date) {
+    } else if (timestamp instanceof Date) {
       return timestamp;
     } else if (typeof timestamp === "string" && !isNaN(Date.parse(timestamp))) {
       return new Date(timestamp);
@@ -69,21 +65,18 @@ const formatTimestamp = (timestamp) => {
       return { time: "N/A", date: "N/A", fullDateTime: "N/A" };
     }
 
-    // Format time (e.g., 10:28 AM)
     const time = date.toLocaleTimeString("en-US", {
       hour: "2-digit",
       minute: "2-digit",
       hour12: true,
     });
 
-    // Format date (e.g., September 17, 2025)
     const dateStr = date.toLocaleDateString("en-US", {
       month: "long",
       day: "numeric",
       year: "numeric",
     });
 
-    // Full date time for export
     const fullDateTime = `${dateStr}, ${time}`;
 
     return { time, date: dateStr, fullDateTime };
@@ -96,6 +89,7 @@ const formatTimestamp = (timestamp) => {
 const QuotaSummary = () => {
   const [quotaData, setQuotaData] = useState([]);
   const [filteredData, setFilteredData] = useState([]);
+  const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search] = useState("");
   const [driverSearch, setDriverSearch] = useState("");
@@ -179,7 +173,6 @@ const QuotaSummary = () => {
 
       const unsubscribe = onSnapshot(targetRef, (querySnapshot) => {
         if (!querySnapshot.empty) {
-          // Get the latest target by timestamp
           const latestDoc = querySnapshot.docs.reduce((latest, doc) => {
             const data = doc.data();
             return !latest || data.timestamp.toDate() > latest.timestamp.toDate()
@@ -223,6 +216,70 @@ const QuotaSummary = () => {
     }
   }, []);
 
+  // Real-time listener for transactions
+  const setupTransactionsListener = useCallback(() => {
+    try {
+      const transactionsRef = collection(db, "transactions");
+      const q = query(transactionsRef, where("isVoided", "==", false));
+
+      const unsubscribe = onSnapshot(q, (querySnapshot) => {
+        const transactionData = [];
+        querySnapshot.forEach((doc) => {
+          const data = doc.data();
+          transactionData.push({
+            id: doc.id,
+            driverUID: data.driverUID,
+            farePrice: data.farePrice || 0,
+            timestamp: data.timestamp?.toDate
+              ? data.timestamp.toDate()
+              : data.timestamp || null,
+          });
+        });
+        setTransactions(transactionData);
+      }, (error) => {
+        console.error("Error listening to transactions:", error);
+      });
+
+      return unsubscribe;
+    } catch (error) {
+      console.error("Error setting up transactions listener:", error);
+    }
+  }, []);
+
+  // Function to calculate total fare for a driver within date range
+  const calculateDriverTotalFare = (personnelID) => {
+    return transactions.reduce((total, transaction) => {
+      if (transaction.driverUID !== personnelID) return total;
+
+      const transactionDate = getDateFromTimestamp(transaction.timestamp);
+      if (!transactionDate) return total;
+
+      const year = transactionDate.getFullYear();
+      const month = String(transactionDate.getMonth() + 1).padStart(2, "0");
+      const day = String(transactionDate.getDate()).padStart(2, "0");
+      const transactionDateString = `${year}-${month}-${day}`;
+
+      // Apply date filtering
+      if (filterStartDate && !filterEndDate) {
+        if (transactionDateString === filterStartDate) {
+          return total + transaction.farePrice;
+        }
+      } else if (filterStartDate && filterEndDate) {
+        if (transactionDateString >= filterStartDate && transactionDateString <= filterEndDate) {
+          return total + transaction.farePrice;
+        }
+      } else if (!filterStartDate && filterEndDate) {
+        if (transactionDateString <= filterEndDate) {
+          return total + transaction.farePrice;
+        }
+      } else {
+        return total + transaction.farePrice;
+      }
+
+      return total;
+    }, 0);
+  };
+
   // Real-time listener for quota data
   const setupQuotaListener = useCallback(() => {
     setLoading(true);
@@ -239,8 +296,6 @@ const QuotaSummary = () => {
           data.push({
             id: doc.id,
             target: generalTarget,
-            currentTotal: parseFloat(log.currentTotal) || 0,
-            isMet: log.isMet || false,
             personnelID: log.personnelID || "N/A",
             driverName,
             updatedAt: log.lastUpdated?.toDate
@@ -271,10 +326,13 @@ const QuotaSummary = () => {
     }
   }, [generalTarget, users]);
 
-  // Calculate stats based on filtered data
+  // Calculate stats based on filtered data with actual fare totals
   const calculateFilteredStats = useCallback(() => {
     const totalQuotaAssigned = generalTarget;
-    const quotaMet = filteredData.filter((d) => d.isMet).length;
+    const quotaMet = filteredData.filter((d) => {
+      const currentTotal = calculateDriverTotalFare(d.personnelID);
+      return currentTotal >= d.target;
+    }).length;
     const quotaNotMet = filteredData.length - quotaMet;
 
     setStats({
@@ -283,7 +341,7 @@ const QuotaSummary = () => {
       quotaMet,
       quotaNotMet,
     });
-  }, [filteredData, generalTarget]);
+  }, [filteredData, generalTarget, transactions, filterStartDate, filterEndDate]);
 
   // Pie chart data - based on filtered data
   const pieData = [
@@ -291,14 +349,14 @@ const QuotaSummary = () => {
     { name: "Quota Not Met", value: stats.quotaNotMet },
   ];
 
-  // Bar chart data - based on filtered data
+  // Bar chart data - based on filtered data with actual totals
   const barData = filteredData.map((d) => ({
     driver: d.driverName,
     target: d.target,
-    current: d.currentTotal,
+    current: calculateDriverTotalFare(d.personnelID),
   }));
 
-  // Enhanced export functions with role mapping
+  // Enhanced export functions
   const handleExportCSV = async () => {
     try {
       exportToCSV(
@@ -335,8 +393,6 @@ const QuotaSummary = () => {
     }
   };
 
- 
-
   // Setup all real-time listeners
   useEffect(() => {
     const initData = async () => {
@@ -346,12 +402,14 @@ const QuotaSummary = () => {
 
     const unsubscribeTarget = setupQuotaTargetListener();
     const unsubscribeUsers = setupUsersListener();
+    const unsubscribeTransactions = setupTransactionsListener();
 
     return () => {
       if (unsubscribeTarget) unsubscribeTarget();
       if (unsubscribeUsers) unsubscribeUsers();
+      if (unsubscribeTransactions) unsubscribeTransactions();
     };
-  }, [setupQuotaTargetListener, setupUsersListener, fetchUserRole]);
+  }, [setupQuotaTargetListener, setupUsersListener, setupTransactionsListener, fetchUserRole]);
 
   // Setup quota listener after target and users are loaded
   useEffect(() => {
@@ -379,39 +437,10 @@ const QuotaSummary = () => {
     }
 
     if (filterStatus) {
-      filtered = filtered.filter((log) =>
-        filterStatus === "Met" ? log.isMet : !log.isMet
-      );
-    }
-
-    // Date range filtering using the date column from quota db
-    if (filterStartDate || filterEndDate) {
       filtered = filtered.filter((log) => {
-        const logDate = log.date ? getDateFromTimestamp(log.date) : null;
-        if (!logDate) return false;
-
-        // Convert log date to local date string in YYYY-MM-DD format
-        const year = logDate.getFullYear();
-        const month = String(logDate.getMonth() + 1).padStart(2, "0");
-        const day = String(logDate.getDate()).padStart(2, "0");
-        const logDateString = `${year}-${month}-${day}`;
-
-        // If only start date is provided, show logs from that specific date only
-        if (filterStartDate && !filterEndDate) {
-          return logDateString === filterStartDate;
-        }
-        // If both dates are provided, show logs in the range
-        else if (filterStartDate && filterEndDate) {
-          return (
-            logDateString >= filterStartDate && logDateString <= filterEndDate
-          );
-        }
-        // If only end date is provided (unlikely but handle it)
-        else if (!filterStartDate && filterEndDate) {
-          return logDateString <= filterEndDate;
-        }
-
-        return true;
+        const currentTotal = calculateDriverTotalFare(log.personnelID);
+        const isMet = currentTotal >= log.target;
+        return filterStatus === "Met" ? isMet : !isMet;
       });
     }
 
@@ -423,6 +452,7 @@ const QuotaSummary = () => {
     filterStartDate,
     filterEndDate,
     quotaData,
+    transactions,
   ]);
 
   // Update stats whenever filtered data changes
@@ -437,13 +467,24 @@ const QuotaSummary = () => {
     "Status",
     "Updated At",
   ];
+
+  // Reset filters function
+  const resetFilters = () => {
+    setFilterStartDate(getTodayDate());
+    setFilterEndDate("");
+    setDriverSearch("");
+    setFilterStatus("");
+  };
+
   const rows = filteredData.map((d) => {
     const { fullDateTime } = formatTimestamp(d.updatedAt);
+    const currentTotal = calculateDriverTotalFare(d.personnelID);
+    const isMet = currentTotal >= d.target;
     return [
       d.driverName,
       `₱${d.target.toFixed(2)}`,
-      `₱${d.currentTotal.toFixed(2)}`,
-      d.isMet ? "Met" : "Not Met",
+      `₱${currentTotal.toFixed(2)}`,
+      isMet ? "Met" : "Not Met",
       fullDateTime,
     ];
   });
@@ -547,6 +588,19 @@ const QuotaSummary = () => {
                 </div>
               </div>
 
+              {/* Reset Filters Button */}
+              <div className="flex flex-col">
+                <label className="text-sm font-medium text-gray-700 mb-1 opacity-0">
+                  Reset
+                </label>
+                <button
+                  onClick={resetFilters}
+                  className="px-4 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600 transition duration-200"
+                >
+                  Reset Filters
+                </button>
+              </div>
+
               {/* Export */}
               <div className="relative flex flex-col">
                 <label className="text-sm font-medium text-gray-700 mb-1 opacity-0">
@@ -586,7 +640,7 @@ const QuotaSummary = () => {
             </div>
           </div>
 
-          {/* Stats Cards - Now reflect filtered data */}
+          {/* Stats Cards */}
           <div className="px-6 py-6 mt-5.5 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             <div className="bg-white rounded-lg shadow-md p-6 flex items-center justify-between">
               <div
@@ -748,6 +802,9 @@ const QuotaSummary = () => {
               <tbody className="bg-white divide-y divide-gray-200">
                 {filteredData.map((log) => {
                   const { time, date } = formatTimestamp(log.updatedAt);
+                  const currentTotal = calculateDriverTotalFare(log.personnelID);
+                  const isMet = currentTotal >= log.target;
+                  
                   return (
                     <tr key={log.id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
@@ -757,17 +814,17 @@ const QuotaSummary = () => {
                         ₱{log.target.toFixed(2)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        ₱{log.currentTotal.toFixed(2)}
+                        ₱{currentTotal.toFixed(2)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm">
                         <span
                           className={`inline-flex items-center px-2 py-1 text-xs font-medium rounded-full ${
-                            log.isMet
+                            isMet
                               ? "bg-green-100 text-green-800"
                               : "bg-red-100 text-red-800"
                           }`}
                         >
-                          {log.isMet ? "Met" : "Not Met"}
+                          {isMet ? "Met" : "Not Met"}
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">

@@ -313,7 +313,6 @@ const DashboardAnalytics = () => {
     setEndDate("");
     setSelectedRoute("");
     setDriverSearch("");
-    setFilteredTransactions(transactions);
   };
 
   // Pagination functions
