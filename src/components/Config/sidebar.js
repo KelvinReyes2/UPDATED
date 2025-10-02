@@ -22,6 +22,21 @@ const Sidebar = ({ user }) => {
 
   useEffect(() => {
     setActiveLink(location.pathname);
+    
+    // Automatically open parent menus when on child routes
+    const newOpenMenus = {};
+    navLinks.forEach(link => {
+      if (link.children) {
+        // Check if current path matches any child route
+        const isChildActive = link.children.some(child => 
+          location.pathname === child.to
+        );
+        if (isChildActive) {
+          newOpenMenus[link.label] = true;
+        }
+      }
+    });
+    setOpenMenus(newOpenMenus);
   }, [location]);
 
   // update CSS variable so the main content can read the sidebar width
@@ -55,10 +70,15 @@ const Sidebar = ({ user }) => {
   };
 
   const toggleMenu = (label) => {
-    setOpenMenus((prev) => ({
-      ...prev,
-      [label]: !prev[label],
-    }));
+    setOpenMenus((prev) => {
+      // If clicking the already open menu, close it
+      if (prev[label]) {
+        const { [label]: removed, ...rest } = prev;
+        return rest;
+      }
+      // Otherwise, close all others and open the clicked one
+      return { [label]: true };
+    });
   };
 
   return (
@@ -96,23 +116,28 @@ const Sidebar = ({ user }) => {
               const isActive = activeLink === link.to;
 
               if (link.children) {
+                // Check if any child is active
+                const isChildActive = link.children.some(
+                  (child) => activeLink === child.to
+                );
+                
                 return (
                   <div key={link.label}>
                     <button
                       onClick={() => toggleMenu(link.label)}
                       className={`flex items-center w-full px-3 py-2 rounded-lg transition-all duration-300 ease-in-out ${
-                        openMenus[link.label] ? "font-bold" : "font-medium"
+                        openMenus[link.label] || isChildActive ? "font-bold" : "font-medium"
                       } ${collapsed ? "justify-center" : ""}`}
                       style={{
-                        backgroundColor: openMenus[link.label]
+                        backgroundColor: openMenus[link.label] || isChildActive
                           ? "white"
                           : "transparent",
-                        color: openMenus[link.label] ? primaryColor : "white",
+                        color: openMenus[link.label] || isChildActive ? primaryColor : "white",
                       }}
                     >
                       <img
                         src={
-                          openMenus[link.label]
+                          openMenus[link.label] || isChildActive
                             ? link.img.active
                             : link.img.inactive
                         }
@@ -124,7 +149,7 @@ const Sidebar = ({ user }) => {
                     </button>
 
                     {/* submenu */}
-                    {openMenus[link.label] && !collapsed && (
+                    {(openMenus[link.label] || isChildActive) && !collapsed && (
                       <div className="ml-6 mt-2 space-y-2 relative">
                         <div className="absolute left-3 top-0 bottom-0 w-0.5 bg-white" />
                         {link.children
