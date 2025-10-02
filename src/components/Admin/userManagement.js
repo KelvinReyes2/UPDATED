@@ -241,7 +241,7 @@ export default function UserManagement() {
     user.email,
     user.role,
     user.status,
-    `="${user.telNo}"`,
+    user.telNo,
     user.address,
     new Date(user.createdAt).toLocaleString(),
   ]);
