@@ -218,24 +218,40 @@ const QuotaSummary = () => {
   }, []);
 
   // Real-time listener for unit data to get dispatched drivers
-  const setupUnitDataListener = useCallback(() => {
+   const setupUnitDataListener = useCallback(() => {
     try {
       const unitRef = collection(db, "unit");
       const q = query(unitRef, where("status", "==", "Dispatched"));
-
+      
       const unsubscribe = onSnapshot(q, (querySnapshot) => {
         const dispatchedDrivers = [];
+        const today = getTodayDate();
+        
         querySnapshot.forEach((doc) => {
           const data = doc.data();
-          if (data.unitHolder) {
-            dispatchedDrivers.push(data.unitHolder);
+          
+          // Check if unit was dispatched today
+          if (data.unitHolder && data.dispatchedDate) {
+            const dispatchDate = getDateFromTimestamp(data.dispatchedDate);
+            if (dispatchDate) {
+              const year = dispatchDate.getFullYear();
+              const month = String(dispatchDate.getMonth() + 1).padStart(2, "0");
+              const day = String(dispatchDate.getDate()).padStart(2, "0");
+              const dispatchDateString = `${year}-${month}-${day}`;
+              
+              // Only include if dispatched today
+              if (dispatchDateString === today) {
+                dispatchedDrivers.push(data.unitHolder);
+              }
+            }
           }
         });
+        
         setUnitData(dispatchedDrivers);
       }, (error) => {
         console.error("Error listening to unit data:", error);
       });
-
+      
       return unsubscribe;
     } catch (error) {
       console.error("Error setting up unit data listener:", error);
