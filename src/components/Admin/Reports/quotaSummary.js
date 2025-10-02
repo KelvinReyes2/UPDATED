@@ -90,7 +90,6 @@ const QuotaSummary = () => {
   const [quotaData, setQuotaData] = useState([]);
   const [filteredData, setFilteredData] = useState([]);
   const [transactions, setTransactions] = useState([]);
-  const [unitData, setUnitData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search] = useState("");
   const [driverSearch, setDriverSearch] = useState("");
@@ -118,14 +117,6 @@ const QuotaSummary = () => {
   const secondaryColor = "#405a88";
 
   const toggleDropdown = () => setIsDropdownOpen(!isDropdownOpen);
-
-  // Reset filters function
-  const resetFilters = () => {
-    setFilterStartDate(getTodayDate());
-    setFilterEndDate("");
-    setDriverSearch("");
-    setFilterStatus("");
-  };
 
   // Function to fetch user role
   const fetchUserRole = useCallback(async () => {
@@ -225,48 +216,7 @@ const QuotaSummary = () => {
     }
   }, []);
 
-  // Real-time listener for unit data to get dispatched drivers for today
-  const setupUnitDataListener = useCallback(() => {
-    try {
-      const unitRef = collection(db, "unit");
-      const q = query(unitRef, where("status", "==", "Dispatched"));
-      
-      const unsubscribe = onSnapshot(q, (querySnapshot) => {
-        const dispatchedDrivers = [];
-        const today = getTodayDate();
-        
-        querySnapshot.forEach((doc) => {
-          const data = doc.data();
-          
-          // Check if unit was dispatched today
-          if (data.unitHolder && data.dispatchedDate) {
-            const dispatchDate = getDateFromTimestamp(data.dispatchedDate);
-            if (dispatchDate) {
-              const year = dispatchDate.getFullYear();
-              const month = String(dispatchDate.getMonth() + 1).padStart(2, "0");
-              const day = String(dispatchDate.getDate()).padStart(2, "0");
-              const dispatchDateString = `${year}-${month}-${day}`;
-              
-              // Only include if dispatched today
-              if (dispatchDateString === today) {
-                dispatchedDrivers.push(data.unitHolder);
-              }
-            }
-          }
-        });
-        
-        setUnitData(dispatchedDrivers);
-      }, (error) => {
-        console.error("Error listening to unit data:", error);
-      });
-      
-      return unsubscribe;
-    } catch (error) {
-      console.error("Error setting up unit data listener:", error);
-    }
-  }, []);
-
-  // Real-time listener for transactions (all non-voided transactions)
+  // Real-time listener for transactions
   const setupTransactionsListener = useCallback(() => {
     try {
       const transactionsRef = collection(db, "transactions");
@@ -276,7 +226,6 @@ const QuotaSummary = () => {
         const transactionData = [];
         querySnapshot.forEach((doc) => {
           const data = doc.data();
-          // Include all transactions regardless of current driver dispatch status
           transactionData.push({
             id: doc.id,
             driverUID: data.driverUID,
@@ -344,19 +293,16 @@ const QuotaSummary = () => {
           const log = doc.data();
           const driverName = users[log.personnelID] || log.personnelID || "N/A";
 
-          // Only include currently dispatched drivers (dispatched today)
-          if (unitData.includes(log.personnelID)) {
-            data.push({
-              id: doc.id,
-              target: generalTarget,
-              personnelID: log.personnelID || "N/A",
-              driverName,
-              updatedAt: log.lastUpdated?.toDate
-                ? log.lastUpdated.toDate()
-                : new Date(),
-              date: log.date?.toDate() || null,
-            });
-          }
+          data.push({
+            id: doc.id,
+            target: generalTarget,
+            personnelID: log.personnelID || "N/A",
+            driverName,
+            updatedAt: log.lastUpdated?.toDate
+              ? log.lastUpdated.toDate()
+              : new Date(),
+            date: log.date?.toDate() || null,
+          });
         });
 
         // Filter unique drivers
@@ -378,7 +324,7 @@ const QuotaSummary = () => {
       console.error("Error setting up quota listener:", error);
       setLoading(false);
     }
-  }, [generalTarget, users, unitData]);
+  }, [generalTarget, users]);
 
   // Calculate stats based on filtered data with actual fare totals
   const calculateFilteredStats = useCallback(() => {
@@ -457,25 +403,23 @@ const QuotaSummary = () => {
     const unsubscribeTarget = setupQuotaTargetListener();
     const unsubscribeUsers = setupUsersListener();
     const unsubscribeTransactions = setupTransactionsListener();
-    const unsubscribeUnitData = setupUnitDataListener();
 
     return () => {
       if (unsubscribeTarget) unsubscribeTarget();
       if (unsubscribeUsers) unsubscribeUsers();
       if (unsubscribeTransactions) unsubscribeTransactions();
-      if (unsubscribeUnitData) unsubscribeUnitData();
     };
-  }, [setupQuotaTargetListener, setupUsersListener, setupTransactionsListener, setupUnitDataListener, fetchUserRole]);
+  }, [setupQuotaTargetListener, setupUsersListener, setupTransactionsListener, fetchUserRole]);
 
-  // Setup quota listener after target, users, and unitData are loaded
+  // Setup quota listener after target and users are loaded
   useEffect(() => {
-    if (generalTarget !== null && Object.keys(users).length > 0 && unitData.length >= 0) {
+    if (generalTarget !== null && Object.keys(users).length > 0) {
       const unsubscribeQuota = setupQuotaListener();
       return () => {
         if (unsubscribeQuota) unsubscribeQuota();
       };
     }
-  }, [generalTarget, users, unitData, setupQuotaListener]);
+  }, [generalTarget, users, setupQuotaListener]);
 
   // Filter data whenever dependencies change
   useEffect(() => {
@@ -523,6 +467,15 @@ const QuotaSummary = () => {
     "Status",
     "Updated At",
   ];
+
+  // Reset filters function
+  const resetFilters = () => {
+    setFilterStartDate(getTodayDate());
+    setFilterEndDate("");
+    setDriverSearch("");
+    setFilterStatus("");
+  };
+
   const rows = filteredData.map((d) => {
     const { fullDateTime } = formatTimestamp(d.updatedAt);
     const currentTotal = calculateDriverTotalFare(d.personnelID);
@@ -635,7 +588,7 @@ const QuotaSummary = () => {
                 </div>
               </div>
 
-              {/* Reset Button */}
+              {/* Reset Filters Button */}
               <div className="flex flex-col">
                 <label className="text-sm font-medium text-gray-700 mb-1 opacity-0">
                   Reset
