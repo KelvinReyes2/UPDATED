@@ -361,7 +361,7 @@ const TripLogs = () => {
   // Reset filters function
   const resetFilters = () => {
     setSelectedRoute("");
-    setSelectedStartDate("");
+    setSelectedStartDate(getTodayDate());
     setSelectedEndDate("");
     setDriverSearch("");
   };
