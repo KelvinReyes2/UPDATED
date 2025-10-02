@@ -491,7 +491,7 @@ const TransactionOverview = () => {
       transaction.paymentMethod,
       transaction.driverName,
       unit,
-      `₱${transaction.farePrice}`,
+      transaction.farePrice,
       transaction.route,
       transaction.isVoided ? "Voided" : "Successful",
       fullDateTime,

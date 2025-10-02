@@ -486,8 +486,8 @@ const handleExportPDF = async () => {
     const isMet = currentTotal >= d.target;
     return [
       d.driverName,
-      `₱${d.target.toFixed(2)}`,
-      `₱${currentTotal.toFixed(2)}`,
+      d.target.toFixed(2),
+      currentTotal.toFixed(2),
       isMet ? "Met" : "Not Met",
       fullDateTime,
     ];
