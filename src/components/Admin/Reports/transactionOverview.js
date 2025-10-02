@@ -499,49 +499,52 @@ const TransactionOverview = () => {
   });
 
   const handleExportCSV = async () => {
-    try {
-      exportToCSV(
-        headers,
-        rows,
-        "Transaction-Overview-Report.csv",
-        userName,
-        "Transaction-Overview-Report"
-      );
+  try {
+    exportToCSV(
+      headers,
+      rows,
+      "Transaction-Overview-Report.csv",
+      userName,
+      "Transaction-Overview-Report",
+      startDate,
+      endDate
+    );
 
-      // Log the export activity
-      await logSystemActivity(
-        "Exported Transaction Overview Report to CSV",
-        userName
-      );
+    // Log the export activity
+    await logSystemActivity(
+      "Exported Transaction Overview Report to CSV",
+      userName
+    );
 
-      setIsDropdownOpen(false);
-    } catch (error) {
-      console.error("Error during CSV export:", error);
-    }
-  };
+    setIsDropdownOpen(false);
+  } catch (error) {
+    console.error("Error during CSV export:", error);
+  }
+};
 
-  const handleExportPDF = async () => {
-    try {
-      exportToPDF(
-        headers,
-        rows,
-        "Transaction-Overview-Report",
-        "Transaction-Overview-Report.pdf",
-        userName
-      );
+const handleExportPDF = async () => {
+  try {
+    exportToPDF(
+      headers,
+      rows,
+      "Transaction-Overview-Report",
+      "Transaction-Overview-Report.pdf",
+      userName,
+      startDate,
+      endDate
+    );
 
-      // Log the export activity
-      await logSystemActivity(
-        "Exported Transaction Overview Report to PDF",
-        userName
-      );
+    // Log the export activity
+    await logSystemActivity(
+      "Exported Transaction Overview Report to PDF",
+      userName
+    );
 
-      setIsDropdownOpen(false);
-    } catch (error) {
-      console.error("Error during PDF export:", error);
-    }
-  };
-
+    setIsDropdownOpen(false);
+  } catch (error) {
+    console.error("Error during PDF export:", error);
+  }
+};
   // Setup real-time listeners
   useEffect(() => {
     const initData = async () => {

@@ -357,42 +357,46 @@ const QuotaSummary = () => {
   }));
 
   // Enhanced export functions
-  const handleExportCSV = async () => {
-    try {
-      exportToCSV(
-        headers,
-        rows,
-        "Quota-Summary-Report.csv",
-        userName,
-        "Quota-Summary-Report"
-      );
+  // Enhanced export functions
+const handleExportCSV = async () => {
+  try {
+    exportToCSV(
+      headers,
+      rows,
+      "Quota-Summary-Report.csv",
+      userName,
+      "Quota-Summary-Report",
+      filterStartDate,
+      filterEndDate
+    );
 
-      await logSystemActivity("Exported Quota Summary Report to CSV", userName);
+    await logSystemActivity("Exported Quota Summary Report to CSV", userName);
 
-      setIsDropdownOpen(false);
-    } catch (error) {
-      console.error("Error during CSV export:", error);
-    }
-  };
+    setIsDropdownOpen(false);
+  } catch (error) {
+    console.error("Error during CSV export:", error);
+  }
+};
 
-  const handleExportPDF = async () => {
-    try {
-      exportToPDF(
-        headers,
-        rows,
-        "Quota-Summary-Report",
-        "Quota-Summary-Report.pdf",
-        userName
-      );
+const handleExportPDF = async () => {
+  try {
+    exportToPDF(
+      headers,
+      rows,
+      "Quota-Summary-Report",
+      "Quota-Summary-Report.pdf",
+      userName,
+      filterStartDate,
+      filterEndDate
+    );
 
-      await logSystemActivity("Exported Quota Summary Report to PDF", userName);
+    await logSystemActivity("Exported Quota Summary Report to PDF", userName);
 
-      setIsDropdownOpen(false);
-    } catch (error) {
-      console.error("Error during PDF export:", error);
-    }
-  };
-
+    setIsDropdownOpen(false);
+  } catch (error) {
+    console.error("Error during PDF export:", error);
+  }
+};
   // Setup all real-time listeners
   useEffect(() => {
     const initData = async () => {

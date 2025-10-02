@@ -264,68 +264,72 @@ export default function ActivityLogSuper() {
     log.activity || "No activity description",
   ]);
 
-  // CSV Export
-  const handleExportToCSV = async () => {
-    if (!filteredLogs || filteredLogs.length === 0) {
-      alert("No data to export.");
-      return;
+ // CSV Export
+const handleExportToCSV = async () => {
+  if (!filteredLogs || filteredLogs.length === 0) {
+    alert("No data to export.");
+    return;
+  }
+
+  exportToCSV(
+    headers,
+    exportRows,
+    "Activity_Log.csv",
+    currentUser?.email || "Unknown",
+    "Activity Log",
+    filterStartDate,
+    filterEndDate
+  );
+
+  if (user) {
+    try {
+      const userFullName = user.firstName && user.lastName 
+        ? `${user.firstName} ${user.lastName}`.trim()
+        : currentUser?.email || "Unknown User";
+
+      await logSystemActivity(
+        "Exported Activity Log Report to CSV",
+        userFullName
+      );
+      console.log("Export log saved successfully.");
+    } catch (err) {
+      console.error("Failed to save export log:", err);
     }
+  }
+};
 
-    exportToCSV(
-      headers,
-      exportRows,
-      "Activity_Log.csv",
-      currentUser?.email || "Unknown",
-      "Activity Log"
-    );
+// PDF Export
+const handleExportToPDF = async () => {
+  if (!filteredLogs || filteredLogs.length === 0) {
+    alert("No data to export.");
+    return;
+  }
+  exportToPDF(
+    headers,
+    exportRows,
+    "Activity Log",
+    "Activity_Log.pdf",
+    currentUser?.email || "Unknown",
+    filterStartDate,
+    filterEndDate
+  );
 
-    if (user) {
-      try {
-        const userFullName = user.firstName && user.lastName 
-          ? `${user.firstName} ${user.lastName}`.trim()
-          : currentUser?.email || "Unknown User";
+  if (user) {
+    try {
+      const userFullName = user.firstName && user.lastName 
+        ? `${user.firstName} ${user.lastName}`.trim()
+        : currentUser?.email || "Unknown User";
 
-        await logSystemActivity(
-          "Exported Activity Log Report to CSV",
-          userFullName
-        );
-        console.log("Export log saved successfully.");
-      } catch (err) {
-        console.error("Failed to save export log:", err);
-      }
+      await logSystemActivity(
+        "Exported Activity Log Report to PDF",
+        userFullName
+      );
+      console.log("Export log saved successfully.");
+    } catch (err) {
+      console.error("Failed to save export log:", err);
     }
-  };
-
-  // PDF Export
-  const handleExportToPDF = async () => {
-    if (!filteredLogs || filteredLogs.length === 0) {
-      alert("No data to export.");
-      return;
-    }
-    exportToPDF(
-      headers,
-      exportRows,
-      "Activity Log",
-      "Activity_Log.pdf",
-      currentUser?.email || "Unknown"
-    );
-
-    if (user) {
-      try {
-        const userFullName = user.firstName && user.lastName 
-          ? `${user.firstName} ${user.lastName}`.trim()
-          : currentUser?.email || "Unknown User";
-
-        await logSystemActivity(
-          "Exported Activity Log Report to PDF",
-          userFullName
-        );
-        console.log("Export log saved successfully.");
-      } catch (err) {
-        console.error("Failed to save export log:", err);
-      }
-    }
-  };
+  }
+};
 
   const columns = [
     {

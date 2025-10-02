@@ -10,13 +10,41 @@ export const exportToCSV = (
   rows,
   filename = "report.csv",
   user = "Unknown",
-  title = "Report"
+  title = "Report",
+  startDate = null,
+  endDate = null
 ) => {
   const timestamp = new Date().toLocaleString();
+
+  // Format date range if provided
+  let dateRange = "";
+  if (startDate || endDate) {
+    const formatDate = (date) => {
+      if (!date) return "";
+      const d = new Date(date);
+      return d.toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      });
+    };
+
+    // If both dates are the same, display as "Today's date"
+    if (startDate && endDate && startDate === endDate) {
+      dateRange = `Today's date: ${formatDate(startDate)}`;
+    } else if (startDate && endDate) {
+      dateRange = `Date Range: ${formatDate(startDate)} to ${formatDate(endDate)}`;
+    } else if (startDate && !endDate) {
+      dateRange = `Date: ${formatDate(startDate)}`;
+    } else if (!startDate && endDate) {
+      dateRange = `Date: Up to ${formatDate(endDate)}`;
+    }
+  }
 
   const data = [
     ["TicketEase"],
     [title],
+    ...(dateRange ? [[dateRange]] : []),
     [],
     headers,
     ...rows,
@@ -38,7 +66,9 @@ export const exportToPDF = (
   rows,
   title = "Report",
   filename = "report.pdf",
-  user = "Unknown"
+  user = "Unknown",
+  startDate = null,
+  endDate = null
 ) => {
   const timestamp = new Date().toLocaleString();
   const doc = new jsPDF("landscape");
@@ -52,10 +82,40 @@ export const exportToPDF = (
   doc.setFontSize(16);
   doc.text(title, pageWidth / 2, 60, { align: "center" });
 
+  // Add date range if provided
+  let startY = 70;
+  if (startDate || endDate) {
+    const formatDate = (date) => {
+      if (!date) return "";
+      const d = new Date(date);
+      return d.toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      });
+    };
+
+    let dateRange = "";
+    // If both dates are the same, display as "Today's date"
+    if (startDate && endDate && startDate === endDate) {
+      dateRange = `Today's date: ${formatDate(startDate)}`;
+    } else if (startDate && endDate) {
+      dateRange = `Date Range: ${formatDate(startDate)} to ${formatDate(endDate)}`;
+    } else if (startDate && !endDate) {
+      dateRange = `Date: ${formatDate(startDate)}`;
+    } else if (!startDate && endDate) {
+      dateRange = `Date: Up to ${formatDate(endDate)}`;
+    }
+
+    doc.setFontSize(12);
+    doc.text(dateRange, pageWidth / 2, 68, { align: "center" });
+    startY = 76;
+  }
+
   doc.autoTable({
     head: [headers],
     body: rows,
-    startY: 70,
+    startY: startY,
     theme: "grid",
     headStyles: { fillColor: [54, 76, 110], textColor: [255, 255, 255] },
     bodyStyles: { fontSize: 10 },

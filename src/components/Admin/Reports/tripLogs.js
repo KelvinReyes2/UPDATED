@@ -370,38 +370,42 @@ const TripLogs = () => {
 
   // Export functions
   const handleExportCSV = async () => {
-    try {
-      exportToCSV(
-        headers,
-        rows,
-        "Trip-Logs-Report.csv",
-        userName,
-        "Trip-Logs-Report"
-      );
+  try {
+    exportToCSV(
+      headers,
+      rows,
+      "Trip-Logs-Report.csv",
+      userName,
+      "Trip-Logs-Report",
+      selectedStartDate,
+      selectedEndDate
+    );
 
-      await logSystemActivity("Exported Trip Logs Report to CSV", userName);
-      setIsDropdownOpen(false);
-    } catch (error) {
-      console.error("Error during CSV export:", error);
-    }
-  };
+    await logSystemActivity("Exported Trip Logs Report to CSV", userName);
+    setIsDropdownOpen(false);
+  } catch (error) {
+    console.error("Error during CSV export:", error);
+  }
+};
 
   const handleExportPDF = async () => {
-    try {
-      exportToPDF(
-        headers,
-        rows,
-        "Trip-Logs-Report",
-        "Trip-Logs-Report.pdf",
-        userName
-      );
+  try {
+    exportToPDF(
+      headers,
+      rows,
+      "Trip-Logs-Report",
+      "Trip-Logs-Report.pdf",
+      userName,
+      selectedStartDate,
+      selectedEndDate
+    );
 
-      await logSystemActivity("Exported Trip Logs Report to PDF", userName);
-      setIsDropdownOpen(false);
-    } catch (error) {
-      console.error("Error during PDF export:", error);
-    }
-  };
+    await logSystemActivity("Exported Trip Logs Report to PDF", userName);
+    setIsDropdownOpen(false);
+  } catch (error) {
+    console.error("Error during PDF export:", error);
+  }
+};
 
   // Setup real-time listeners
   useEffect(() => {
