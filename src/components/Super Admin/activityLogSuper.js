@@ -85,6 +85,13 @@ export default function ActivityLogSuper() {
     setSelectedLog(null);
   };
 
+  // Reset filters function
+  const resetFilters = () => {
+    setSearch("");
+    setFilterStartDate(getTodayDate());
+    setFilterEndDate("");
+  };
+
   // Helper function to convert date to local YYYY-MM-DD format
   const toLocalDateString = (date) => {
     const year = date.getFullYear();
@@ -380,7 +387,7 @@ export default function ActivityLogSuper() {
           title="View Details"
           className="inline-flex items-center justify-center h-9 px-3 rounded-full border border-gray-200 bg-white text-gray-700 hover:shadow-md transition text-sm font-semibold"
         >
-          <FaEye size={14} /> {/* Eye Icon for View Details */}
+          <FaEye size={14} />
         </button>
       ),
       ignoreRowClick: true,
@@ -431,9 +438,6 @@ export default function ActivityLogSuper() {
 
   return (
     <div className="flex bg-gray-100 min-h-screen">
-      {/* Sidebar */}
-
-      {/* Main Content */}
       <main className="flex-1 p-10">
         <div className="mx-auto w-full max-w-[1900px]">
           <div
@@ -474,6 +478,19 @@ export default function ActivityLogSuper() {
                       value={filterEndDate}
                       onChange={(e) => setFilterEndDate(e.target.value)}
                     />
+                  </div>
+
+                  {/* Reset Filters Button */}
+                  <div className="flex flex-col">
+                    <label className="text-sm font-medium text-gray-700 mb-1 opacity-0">
+                      Reset
+                    </label>
+                    <button
+                      onClick={resetFilters}
+                      className="px-4 py-2 bg-gray-500 text-white text-sm rounded-lg hover:bg-gray-600 transition duration-200 shadow-md"
+                    >
+                      Reset Filters
+                    </button>
                   </div>
                 </div>
 
@@ -546,8 +563,7 @@ export default function ActivityLogSuper() {
             {/* Modal Header */}
             <div className="flex items-center justify-between p-6 border-b border-gray-200">
               <div className="flex items-center gap-2">
-                <FaHistory size={20} className="text-gray-700" />{" "}
-                {/* Changed to FaHistory for activity history icon */}
+                <FaHistory size={20} className="text-gray-700" />
                 <h2 className="text-xl font-semibold text-gray-800">
                   Log Details
                 </h2>
