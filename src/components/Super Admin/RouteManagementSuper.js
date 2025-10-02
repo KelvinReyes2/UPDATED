@@ -238,6 +238,15 @@ export default function RouteManagementSuper() {
     particularFilter,
   ]);
 
+  // Reset filters function
+  const resetFilters = () => {
+    setSearch("");
+    setStatusFilter("");
+    setRouteFilter("");
+    setBarangayFilter("");
+    setParticularFilter("");
+  };
+
   // ---- formatting helpers ----
   const nfInt = useMemo(() => new Intl.NumberFormat("en-PH"), []);
 
@@ -823,6 +832,14 @@ export default function RouteManagementSuper() {
                   ))}
                 </select>
               </div>
+
+              {/* Reset Filters Button */}
+              <button
+                onClick={resetFilters}
+                className="px-4 py-2 bg-gray-500 text-white text-sm rounded-lg hover:bg-gray-600 transition duration-200 shadow-md"
+              >
+                Reset Filters
+              </button>
 
               <div className="ml-auto flex items-center">
                 <div className="relative">
