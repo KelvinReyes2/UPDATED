@@ -6,7 +6,13 @@ const PrivateRoute = ({
   requiredPermission,
   user,
   children,
+  loading,
 }) => {
+  // Wait for auth to finish loading before checking user
+  if (loading) {
+    return null;
+  }
+
   if (!user) {
     return <Navigate to="/login" replace />;
   }

@@ -43,6 +43,7 @@ import Maintenance from "./components/Super Admin/MaintenanceSuper";
 function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [initialLoad, setInitialLoad] = useState(true);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
@@ -63,13 +64,15 @@ function App() {
         setUser(null);
       }
       setLoading(false);
+      setInitialLoad(false);
     });
 
     return () => unsub();
   }, []);
 
-  if (loading) {
-    return null;
+  // Only show blank screen on initial page load, not on refreshes
+  if (initialLoad && loading) {
+    return <div style={{ opacity: 0 }}></div>;
   }
 
   return (
@@ -85,6 +88,7 @@ function App() {
             <PrivateRoute
               allowedRoles={["Admin", "Cashier", "Super"]}
               user={user}
+              loading={loading}
             >
               <Layout user={user} />
             </PrivateRoute>
@@ -98,6 +102,7 @@ function App() {
                 allowedRoles={["Admin"]}
                 requiredPermission="Dashboard Admin"
                 user={user}
+                loading={loading}
               >
                 <DashboardAdmin />
               </PrivateRoute>
@@ -110,6 +115,7 @@ function App() {
                 allowedRoles={["Admin"]}
                 requiredPermission="Unit Tracking"
                 user={user}
+                loading={loading}
               >
                 <UnitTracking />
               </PrivateRoute>
@@ -122,6 +128,7 @@ function App() {
                 allowedRoles={["Admin"]}
                 requiredPermission="User Management"
                 user={user}
+                loading={loading}
               >
                 <UserManagement />
               </PrivateRoute>
@@ -134,6 +141,7 @@ function App() {
                 allowedRoles={["Admin"]}
                 requiredPermission="Driver Dispatch"
                 user={user}
+                loading={loading}
               >
                 <DriverDispatch />
               </PrivateRoute>
@@ -146,6 +154,7 @@ function App() {
                 allowedRoles={["Admin"]}
                 requiredPermission="Vehicle Management"
                 user={user}
+                loading={loading}
               >
                 <VehicleManagement />
               </PrivateRoute>
@@ -158,6 +167,7 @@ function App() {
                 allowedRoles={["Admin"]}
                 requiredPermission="Reports"
                 user={user}
+                loading={loading}
               >
                 <TransactionOverview />
               </PrivateRoute>
@@ -170,6 +180,7 @@ function App() {
                 allowedRoles={["Admin"]}
                 requiredPermission="Reports"
                 user={user}
+                loading={loading}
               >
                 <QuotaSummary />
               </PrivateRoute>
@@ -182,6 +193,7 @@ function App() {
                 allowedRoles={["Admin"]}
                 requiredPermission="Reports"
                 user={user}
+                loading={loading}
               >
                 <TripLogs />
               </PrivateRoute>
@@ -196,6 +208,7 @@ function App() {
                 allowedRoles={["Cashier"]}
                 requiredPermission="View Dashboard"
                 user={user}
+                loading={loading}
               >
                 <DashboardCashier />
               </PrivateRoute>
@@ -208,6 +221,7 @@ function App() {
                 allowedRoles={["Cashier"]}
                 requiredPermission="Fuel Logs"
                 user={user}
+                loading={loading}
               >
                 <FuelLogs />
               </PrivateRoute>
@@ -222,6 +236,7 @@ function App() {
                 allowedRoles={["Super"]}
                 requiredPermission="Super Dashboard"
                 user={user}
+                loading={loading}
               >
                 <DashboardSuper />
               </PrivateRoute>
@@ -234,6 +249,7 @@ function App() {
                 allowedRoles={["Super"]}
                 requiredPermission="View Activity Log"
                 user={user}
+                loading={loading}
               >
                 <ActivityLogSuper />
               </PrivateRoute>
@@ -246,6 +262,7 @@ function App() {
                 allowedRoles={["Super"]}
                 requiredPermission="Manage Admins"
                 user={user}
+                loading={loading}
               >
                 <AdminManagement />
               </PrivateRoute>
@@ -258,6 +275,7 @@ function App() {
                 allowedRoles={["Super"]}
                 requiredPermission="Manage Routes"
                 user={user}
+                loading={loading}
               >
                 <RouteManagement />
               </PrivateRoute>
@@ -270,6 +288,7 @@ function App() {
                 allowedRoles={["Super"]}
                 requiredPermission="Manage Quotas"
                 user={user}
+                loading={loading}
               >
                 <QuotaManagement />
               </PrivateRoute>
@@ -282,6 +301,7 @@ function App() {
                 allowedRoles={["Super"]}
                 requiredPermission="Manage User Access"
                 user={user}
+                loading={loading}
               >
                 <UserAccess />
               </PrivateRoute>
@@ -294,6 +314,7 @@ function App() {
                 allowedRoles={["Super"]}
                 requiredPermission="Password Reset"
                 user={user}
+                loading={loading}
               >
                 <PassRest />
               </PrivateRoute>
@@ -306,6 +327,7 @@ function App() {
                 allowedRoles={["Super"]}
                 requiredPermission="Manage Maintenance"
                 user={user}
+                loading={loading}
               >
                 <Maintenance />
               </PrivateRoute>
