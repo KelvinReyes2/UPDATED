@@ -375,11 +375,196 @@ function Login() {
   return (
     <div className="flex h-screen overflow-hidden bg-gradient-to-br from-gray-50 via-gray-100 to-gray-200">
       {loading && (
-        <div className="fixed inset-0 bg-white bg-opacity-95 flex flex-col items-center justify-center z-50 animate-fadeIn">
-          <div className="dual-spinner mb-4" />
-          <p className="text-lg font-medium text-blue-900 animate-pulse">
-            Logging in...
-          </p>
+        <div className="fixed inset-0 bg-gradient-to-br from-indigo-50 via-blue-50 to-white backdrop-blur-sm flex flex-col items-center justify-center z-50">
+          <motion.div
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ duration: 0.3 }}
+            className="flex flex-col items-center"
+          >
+            {/* Animated Bus Icon */}
+            <div className="relative mb-8">
+              {/* Road */}
+              <motion.div
+                className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 w-64 h-1 bg-gray-300 rounded-full overflow-hidden"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.2 }}
+              >
+                <motion.div
+                  className="h-full w-16 bg-gradient-to-r from-transparent via-gray-400 to-transparent"
+                  animate={{ x: [-64, 256] }}
+                  transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
+                />
+              </motion.div>
+
+              {/* Bus */}
+              <motion.div
+                animate={{ 
+                  x: [0, 10, 0],
+                  y: [0, -2, 0]
+                }}
+                transition={{ 
+                  duration: 0.8, 
+                  repeat: Infinity,
+                  ease: "easeInOut"
+                }}
+              >
+                <svg
+                  width="120"
+                  height="120"
+                  viewBox="0 0 120 120"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  {/* Bus Body */}
+                  <rect x="20" y="35" width="80" height="50" rx="8" fill="url(#busGradient)" />
+                  
+                  {/* Windows */}
+                  <rect x="28" y="42" width="25" height="18" rx="2" fill="#E0F2FE" />
+                  <rect x="58" y="42" width="25" height="18" rx="2" fill="#E0F2FE" />
+                  <rect x="88" y="42" width="8" height="18" rx="2" fill="#E0F2FE" />
+                  
+                  {/* Window Dividers */}
+                  <rect x="52" y="42" width="2" height="18" fill="#0EA5E9" opacity="0.3" />
+                  <rect x="82" y="42" width="2" height="18" fill="#0EA5E9" opacity="0.3" />
+                  
+                  {/* Door Line */}
+                  <rect x="42" y="62" width="2" height="23" fill="#1E40AF" opacity="0.4" />
+                  
+                  {/* Headlights */}
+                  <circle cx="25" cy="80" r="3" fill="#FCD34D">
+                    <animate attributeName="opacity" values="1;0.3;1" dur="1s" repeatCount="indefinite" />
+                  </circle>
+                  
+                  {/* Front Bumper */}
+                  <rect x="16" y="82" width="6" height="3" rx="1.5" fill="#1E40AF" />
+                  
+                  {/* Side Mirror */}
+                  <rect x="12" y="45" width="4" height="6" rx="1" fill="#1E40AF" />
+                  
+                  {/* Left Wheel - Static outer circles */}
+                  <circle cx="35" cy="88" r="8" fill="#374151" />
+                  <circle cx="35" cy="88" r="6" fill="#1F2937" />
+                  <circle cx="35" cy="88" r="3" fill="#4B5563" />
+                  
+                  {/* Left Wheel - Rotating spokes */}
+                  <g transform="translate(35, 88)">
+                    <motion.g
+                      animate={{ rotate: 360 }}
+                      transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                    >
+                      <line x1="-5" y1="0" x2="5" y2="0" stroke="#9CA3AF" strokeWidth="1.5" />
+                      <line x1="0" y1="-5" x2="0" y2="5" stroke="#9CA3AF" strokeWidth="1.5" />
+                      <line x1="-3.5" y1="-3.5" x2="3.5" y2="3.5" stroke="#9CA3AF" strokeWidth="1.5" />
+                      <line x1="-3.5" y1="3.5" x2="3.5" y2="-3.5" stroke="#9CA3AF" strokeWidth="1.5" />
+                    </motion.g>
+                  </g>
+                  
+                  {/* Right Wheel - Static outer circles */}
+                  <circle cx="85" cy="88" r="8" fill="#374151" />
+                  <circle cx="85" cy="88" r="6" fill="#1F2937" />
+                  <circle cx="85" cy="88" r="3" fill="#4B5563" />
+                  
+                  {/* Right Wheel - Rotating spokes */}
+                  <g transform="translate(85, 88)">
+                    <motion.g
+                      animate={{ rotate: 360 }}
+                      transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                    >
+                      <line x1="-5" y1="0" x2="5" y2="0" stroke="#9CA3AF" strokeWidth="1.5" />
+                      <line x1="0" y1="-5" x2="0" y2="5" stroke="#9CA3AF" strokeWidth="1.5" />
+                      <line x1="-3.5" y1="-3.5" x2="3.5" y2="3.5" stroke="#9CA3AF" strokeWidth="1.5" />
+                      <line x1="-3.5" y1="3.5" x2="3.5" y2="-3.5" stroke="#9CA3AF" strokeWidth="1.5" />
+                    </motion.g>
+                  </g>
+                  
+                  {/* Gradient Definition */}
+                  <defs>
+                    <linearGradient id="busGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor="#4F46E5" />
+                      <stop offset="100%" stopColor="#2563EB" />
+                    </linearGradient>
+                  </defs>
+                </svg>
+              </motion.div>
+
+              {/* Exhaust Smoke - positioned at rear/bottom */}
+              <motion.div
+                className="absolute left-2 bottom-6"
+                initial={{ opacity: 0, scale: 0 }}
+                animate={{ 
+                  opacity: [0, 0.5, 0],
+                  scale: [0, 1, 1.5],
+                  x: [0, 8, -16],
+                  y: [0, -3, -6]
+                }}
+                transition={{ 
+                  duration: 1.8, 
+                  repeat: Infinity,
+                  ease: "easeOut"
+                }}
+              >
+                <div className="w-3 h-3 bg-gray-400 rounded-full blur-sm" />
+              </motion.div>
+              <motion.div
+                className="absolute left-2 bottom-6"
+                initial={{ opacity: 0, scale: 0 }}
+                animate={{ 
+                  opacity: [0, 0.4, 0],
+                  scale: [0, 1.3, 2],
+                  x: [0, 8, 16],
+                  y: [0, -3, -6]
+                }}
+                transition={{ 
+                  duration: 1.8, 
+                  repeat: Infinity,
+                  ease: "easeOut",
+                  delay: 0.5
+                }}
+              >
+                <div className="w-5 h-5 bg-gray-300 rounded-full blur-md" />
+              </motion.div>
+            </div>
+
+            {/* Loading Text */}
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 }}
+              className="text-center"
+            >
+              <h3 className="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-blue-600 bg-clip-text text-transparent mb-2">
+                Signing you in
+              </h3>
+              <motion.p
+                className="text-gray-600 font-medium"
+                animate={{ opacity: [0.5, 1, 0.5] }}
+                transition={{ duration: 2, repeat: Infinity }}
+              >
+                Please wait a moment...
+              </motion.p>
+            </motion.div>
+
+            {/* Loading Progress Dots */}
+            <div className="flex gap-2 mt-6">
+              {[0, 1, 2].map((i) => (
+                <motion.div
+                  key={i}
+                  className="w-2 h-2 bg-indigo-600 rounded-full"
+                  animate={{
+                    scale: [1, 1.5, 1],
+                    opacity: [0.3, 1, 0.3],
+                  }}
+                  transition={{
+                    duration: 1.5,
+                    repeat: Infinity,
+                    delay: i * 0.2,
+                  }}
+                />
+              ))}
+            </div>
+          </motion.div>
         </div>
       )}
 
@@ -577,9 +762,6 @@ function Login() {
         .animate-slideIn { animation: slideIn 0.6s ease forwards; }
         .animate-slideInRight { animation: slideInRight 0.6s ease forwards; }
         .animate-shake { animation: shake 0.3s ease; }
-        .dual-spinner { width: 48px; height: 48px; border: 4px solid #1e3a8a; border-top: 4px solid transparent; border-radius: 50%; animation: spin 1s linear infinite; position: relative; }
-        .dual-spinner::after { content: ""; position: absolute; top: 8px; left: 8px; right: 8px; bottom: 8px; border: 3px solid #1e3a8a; border-bottom-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite reverse; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
       `}</style>
     </div>
   );

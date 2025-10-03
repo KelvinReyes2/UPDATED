@@ -301,7 +301,7 @@ const TransactionOverview = () => {
     }
   }, []);
 
-  // FIXED: Get unit for a specific transaction based on driverUID and transaction date
+  // Get unit for a specific transaction based on driverUID and transaction date
   const getUnitForTransaction = (driverUID, transactionTimestamp) => {
     if (!driverUID || !transactionTimestamp) return "No Unit Assigned";
 
@@ -410,11 +410,11 @@ const TransactionOverview = () => {
     setFilteredTransactions(filtered);
   }, [startDate, endDate, transactions, selectedRoute, search]);
 
-  // Calculate statistics - FIXED: Exclude voided transactions from total tickets count
+  // Calculate statistics - Exclude voided transactions from total tickets count
   const calculateStats = useCallback(() => {
     const newStats = {
       totalSales: 0,
-      totalTickets: 0, // This will now only count non-voided tickets
+      totalTickets: 0,
       voidedTickets: 0,
       cashPayments: 0,
       cardPayments: 0,
@@ -427,7 +427,7 @@ const TransactionOverview = () => {
 
       if (transaction.isVoided) {
         newStats.voidedTickets += 1;
-        return; // Skip voided transactions for other counts
+        return;
       }
 
       // Count only non-voided tickets
@@ -498,52 +498,51 @@ const TransactionOverview = () => {
   });
 
   const handleExportCSV = async () => {
-  try {
-    exportToCSV(
-      headers,
-      rows,
-      "Transaction-Overview-Report.csv",
-      userName,
-      "Transaction-Overview-Report",
-      startDate,
-      endDate
-    );
+    try {
+      exportToCSV(
+        headers,
+        rows,
+        "Transaction-Overview-Report.csv",
+        userName,
+        "Transaction-Overview-Report",
+        startDate,
+        endDate
+      );
 
-    // Log the export activity
-    await logSystemActivity(
-      "Exported Transaction Overview Report to CSV",
-      userName
-    );
+      await logSystemActivity(
+        "Exported Transaction Overview Report to CSV",
+        userName
+      );
 
-    setIsDropdownOpen(false);
-  } catch (error) {
-    console.error("Error during CSV export:", error);
-  }
-};
+      setIsDropdownOpen(false);
+    } catch (error) {
+      console.error("Error during CSV export:", error);
+    }
+  };
 
-const handleExportPDF = async () => {
-  try {
-    exportToPDF(
-      headers,
-      rows,
-      "Transaction-Overview-Report",
-      "Transaction-Overview-Report.pdf",
-      userName,
-      startDate,
-      endDate
-    );
+  const handleExportPDF = async () => {
+    try {
+      exportToPDF(
+        headers,
+        rows,
+        "Transaction-Overview-Report",
+        "Transaction-Overview-Report.pdf",
+        userName,
+        startDate,
+        endDate
+      );
 
-    // Log the export activity
-    await logSystemActivity(
-      "Exported Transaction Overview Report to PDF",
-      userName
-    );
+      await logSystemActivity(
+        "Exported Transaction Overview Report to PDF",
+        userName
+      );
 
-    setIsDropdownOpen(false);
-  } catch (error) {
-    console.error("Error during PDF export:", error);
-  }
-};
+      setIsDropdownOpen(false);
+    } catch (error) {
+      console.error("Error during PDF export:", error);
+    }
+  };
+
   // Setup real-time listeners
   useEffect(() => {
     const initData = async () => {
@@ -556,7 +555,6 @@ const handleExportPDF = async () => {
     const unsubscribeUnits = setupUnitsListener();
     const unsubscribeUnitLogs = setupUnitLogsListener();
 
-    // Cleanup function to unsubscribe from listeners
     return () => {
       if (unsubscribeTransactions) unsubscribeTransactions();
       if (unsubscribeRoutes) unsubscribeRoutes();
@@ -602,7 +600,7 @@ const handleExportPDF = async () => {
     );
   }
 
-  // Bar chart data for Cash and Card payment methods - FIXED: Only non-voided transactions
+  // Bar chart data for Cash and Card payment methods
   const paymentMethodData = () => {
     return {
       labels: ["Cash", "Card"],
@@ -618,50 +616,56 @@ const handleExportPDF = async () => {
     };
   };
 
-  // Line chart data for total sales per month - FIXED: Only non-voided transactions
-  const totalSalesPerMonthData = () => {
-    const monthlySales = {};
+  // Line chart data for total sales per day with day of week
+  const totalSalesPerDayData = () => {
+    const dailySales = {};
 
     // Only include transactions that are not voided
     filteredTransactions
       .filter((transaction) => !transaction.isVoided)
       .forEach((transaction) => {
         const date = new Date(transaction.timestamp);
-        const monthYear = `${date.getFullYear()}-${date.getMonth() + 1}`;
+        const dateString = getDateString(date);
 
-        // Sum farePrice for each month, ensuring rounding
+        // Sum farePrice for each day
         const fare = parseFloat(transaction.farePrice) || 0;
         const roundedFare = Math.round(fare * 100) / 100;
-        if (monthlySales[monthYear]) {
-          monthlySales[monthYear] += roundedFare;
+        if (dailySales[dateString]) {
+          dailySales[dateString] += roundedFare;
         } else {
-          monthlySales[monthYear] = roundedFare;
+          dailySales[dateString] = roundedFare;
         }
       });
 
-    // Sort months numerically (ascending)
-    const sortedMonths = Object.keys(monthlySales).sort();
+    // Sort dates chronologically
+    const sortedDates = Object.keys(dailySales).sort();
 
-    // Prepare the sales data for display
-    const salesData = sortedMonths.map((monthYear) => {
-      const [year, month] = monthYear.split("-");
-      const monthName = new Date(year, month - 1).toLocaleString("default", {
-        month: "long",
-      });
+    // Prepare the sales data with day of week labels
+    const salesData = sortedDates.map((dateString) => {
+      const [year, month, day] = dateString.split("-");
+      const date = new Date(year, month - 1, day);
+      
+      // Get day of week (e.g., Monday)
+      const dayOfWeek = date.toLocaleDateString("en-US", { weekday: "long" });
+      
+      // Format: "Monday, Oct 4"
+      const monthShort = date.toLocaleDateString("en-US", { month: "short" });
+      const dayNum = date.getDate();
+      
       return {
-        month: `${monthName} ${year}`,
-        sales: monthlySales[monthYear],
+        label: `${dayOfWeek}, ${monthShort} ${dayNum}`,
+        sales: dailySales[dateString],
       };
     });
 
-    const labels = salesData.map((item) => item.month);
+    const labels = salesData.map((item) => item.label);
     const data = salesData.map((item) => item.sales);
 
     return {
       labels: labels,
       datasets: [
         {
-          label: "Total Sales per Month",
+          label: "Total Sales per Day",
           data: data,
           borderColor: "#909b2eff",
           backgroundColor: "#cfbe27ff",
@@ -867,18 +871,27 @@ const handleExportPDF = async () => {
                     align: "start",
                   },
                 },
+                scales: {
+                  x: {
+                    ticks: {
+                      maxRotation: 45,
+                      minRotation: 45,
+                    },
+                  },
+                },
               }}
               className="h-full w-full"
             />
           </div>
         </div>
+            
         <div className="bg-white rounded-lg shadow-md p-4 h-[450px] flex flex-col items-stretch">
           <h3 className="text-lg font-semibold text-gray-800 mb-4">
-            Total Sales per Month
+            Total Sales per Day
           </h3>
           <div className="flex-1">
             <Line
-              data={totalSalesPerMonthData()}
+              data={totalSalesPerDayData()}
               options={{
                 responsive: true,
                 maintainAspectRatio: false,
@@ -888,11 +901,11 @@ const handleExportPDF = async () => {
                     align: "start",
                   },
                 },
-              }}
+                }}
               className="h-full w-full"
             />
           </div>
-        </div>
+        </div> 
         <div className="bg-white rounded-lg shadow-md p-4 h-[450px] flex flex-col items-stretch">
           <h3 className="text-lg font-semibold text-gray-800 mb-4">
             Transaction Status
@@ -1073,3 +1086,5 @@ const handleExportPDF = async () => {
 };
 
 export default TransactionOverview;
+              
+     
