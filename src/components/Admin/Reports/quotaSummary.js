@@ -171,22 +171,27 @@ const QuotaSummary = () => {
     try {
       const targetRef = collection(db, "quotaTarget");
 
-      const unsubscribe = onSnapshot(targetRef, (querySnapshot) => {
-        if (!querySnapshot.empty) {
-          const latestDoc = querySnapshot.docs.reduce((latest, doc) => {
-            const data = doc.data();
-            return !latest || data.timestamp.toDate() > latest.timestamp.toDate()
-              ? data
-              : latest;
-          }, null);
+      const unsubscribe = onSnapshot(
+        targetRef,
+        (querySnapshot) => {
+          if (!querySnapshot.empty) {
+            const latestDoc = querySnapshot.docs.reduce((latest, doc) => {
+              const data = doc.data();
+              return !latest ||
+                data.timestamp.toDate() > latest.timestamp.toDate()
+                ? data
+                : latest;
+            }, null);
 
-          setGeneralTarget(parseFloat(latestDoc.target) || 0);
-        } else {
-          setGeneralTarget(0);
+            setGeneralTarget(parseFloat(latestDoc.target) || 0);
+          } else {
+            setGeneralTarget(0);
+          }
+        },
+        (error) => {
+          console.error("Error listening to quota targets:", error);
         }
-      }, (error) => {
-        console.error("Error listening to quota targets:", error);
-      });
+      );
 
       return unsubscribe;
     } catch (error) {
@@ -199,16 +204,20 @@ const QuotaSummary = () => {
     try {
       const usersRef = collection(db, "users");
 
-      const unsubscribe = onSnapshot(usersRef, (querySnapshot) => {
-        const usersMap = {};
-        querySnapshot.forEach((doc) => {
-          const data = doc.data();
-          usersMap[doc.id] = `${data.firstName} ${data.lastName}`;
-        });
-        setUsers(usersMap);
-      }, (error) => {
-        console.error("Error listening to users:", error);
-      });
+      const unsubscribe = onSnapshot(
+        usersRef,
+        (querySnapshot) => {
+          const usersMap = {};
+          querySnapshot.forEach((doc) => {
+            const data = doc.data();
+            usersMap[doc.id] = `${data.firstName} ${data.lastName}`;
+          });
+          setUsers(usersMap);
+        },
+        (error) => {
+          console.error("Error listening to users:", error);
+        }
+      );
 
       return unsubscribe;
     } catch (error) {
@@ -222,23 +231,27 @@ const QuotaSummary = () => {
       const transactionsRef = collection(db, "transactions");
       const q = query(transactionsRef, where("isVoided", "==", false));
 
-      const unsubscribe = onSnapshot(q, (querySnapshot) => {
-        const transactionData = [];
-        querySnapshot.forEach((doc) => {
-          const data = doc.data();
-          transactionData.push({
-            id: doc.id,
-            driverUID: data.driverUID,
-            farePrice: data.farePrice || 0,
-            timestamp: data.timestamp?.toDate
-              ? data.timestamp.toDate()
-              : data.timestamp || null,
+      const unsubscribe = onSnapshot(
+        q,
+        (querySnapshot) => {
+          const transactionData = [];
+          querySnapshot.forEach((doc) => {
+            const data = doc.data();
+            transactionData.push({
+              id: doc.id,
+              driverUID: data.driverUID,
+              farePrice: data.farePrice || 0,
+              timestamp: data.timestamp?.toDate
+                ? data.timestamp.toDate()
+                : data.timestamp || null,
+            });
           });
-        });
-        setTransactions(transactionData);
-      }, (error) => {
-        console.error("Error listening to transactions:", error);
-      });
+          setTransactions(transactionData);
+        },
+        (error) => {
+          console.error("Error listening to transactions:", error);
+        }
+      );
 
       return unsubscribe;
     } catch (error) {
@@ -265,7 +278,10 @@ const QuotaSummary = () => {
           return total + transaction.farePrice;
         }
       } else if (filterStartDate && filterEndDate) {
-        if (transactionDateString >= filterStartDate && transactionDateString <= filterEndDate) {
+        if (
+          transactionDateString >= filterStartDate &&
+          transactionDateString <= filterEndDate
+        ) {
           return total + transaction.farePrice;
         }
       } else if (!filterStartDate && filterEndDate) {
@@ -287,37 +303,42 @@ const QuotaSummary = () => {
       const quotaRef = collection(db, "quota");
       const q = query(quotaRef, orderBy("lastUpdated", "desc"));
 
-      const unsubscribe = onSnapshot(q, (querySnapshot) => {
-        const data = [];
-        querySnapshot.forEach((doc) => {
-          const log = doc.data();
-          const driverName = users[log.personnelID] || log.personnelID || "N/A";
+      const unsubscribe = onSnapshot(
+        q,
+        (querySnapshot) => {
+          const data = [];
+          querySnapshot.forEach((doc) => {
+            const log = doc.data();
+            const driverName =
+              users[log.personnelID] || log.personnelID || "N/A";
 
-          data.push({
-            id: doc.id,
-            target: generalTarget,
-            personnelID: log.personnelID || "N/A",
-            driverName,
-            updatedAt: log.lastUpdated?.toDate
-              ? log.lastUpdated.toDate()
-              : new Date(),
-            date: log.date?.toDate() || null,
+            data.push({
+              id: doc.id,
+              target: generalTarget,
+              personnelID: log.personnelID || "N/A",
+              driverName,
+              updatedAt: log.lastUpdated?.toDate
+                ? log.lastUpdated.toDate()
+                : new Date(),
+              date: log.date?.toDate() || null,
+            });
           });
-        });
 
-        // Filter unique drivers
-        const uniqueData = data.filter(
-          (log, index, self) =>
-            index === self.findIndex((l) => l.personnelID === log.personnelID)
-        );
+          // Filter unique drivers
+          const uniqueData = data.filter(
+            (log, index, self) =>
+              index === self.findIndex((l) => l.personnelID === log.personnelID)
+          );
 
-        setQuotaData(uniqueData);
-        setFilteredData(uniqueData);
-        setLoading(false);
-      }, (error) => {
-        console.error("Error listening to quota data:", error);
-        setLoading(false);
-      });
+          setQuotaData(uniqueData);
+          setFilteredData(uniqueData);
+          setLoading(false);
+        },
+        (error) => {
+          console.error("Error listening to quota data:", error);
+          setLoading(false);
+        }
+      );
 
       return unsubscribe;
     } catch (error) {
@@ -341,12 +362,18 @@ const QuotaSummary = () => {
       quotaMet,
       quotaNotMet,
     });
-  }, [filteredData, generalTarget, transactions, filterStartDate, filterEndDate]);
+  }, [
+    filteredData,
+    generalTarget,
+    transactions,
+    filterStartDate,
+    filterEndDate,
+  ]);
 
   // Pie chart data - based on filtered data
   const pieData = [
-    { name: "Quota Met", value: stats.quotaMet },
-    { name: "Quota Not Met", value: stats.quotaNotMet },
+    { name: "Reached", value: stats.quotaMet },
+    { name: "Not Reached", value: stats.quotaNotMet },
   ];
 
   // Bar chart data - based on filtered data with actual totals
@@ -358,45 +385,45 @@ const QuotaSummary = () => {
 
   // Enhanced export functions
   // Enhanced export functions
-const handleExportCSV = async () => {
-  try {
-    exportToCSV(
-      headers,
-      rows,
-      "Quota-Summary-Report.csv",
-      userName,
-      "Quota-Summary-Report",
-      filterStartDate,
-      filterEndDate
-    );
+  const handleExportCSV = async () => {
+    try {
+      exportToCSV(
+        headers,
+        rows,
+        "Quota-Summary-Report.csv",
+        userName,
+        "Quota-Summary-Report",
+        filterStartDate,
+        filterEndDate
+      );
 
-    await logSystemActivity("Exported Quota Summary Report to CSV", userName);
+      await logSystemActivity("Exported Quota Summary Report to CSV", userName);
 
-    setIsDropdownOpen(false);
-  } catch (error) {
-    console.error("Error during CSV export:", error);
-  }
-};
+      setIsDropdownOpen(false);
+    } catch (error) {
+      console.error("Error during CSV export:", error);
+    }
+  };
 
-const handleExportPDF = async () => {
-  try {
-    exportToPDF(
-      headers,
-      rows,
-      "Quota-Summary-Report",
-      "Quota-Summary-Report.pdf",
-      userName,
-      filterStartDate,
-      filterEndDate
-    );
+  const handleExportPDF = async () => {
+    try {
+      exportToPDF(
+        headers,
+        rows,
+        "Quota-Summary-Report",
+        "Quota-Summary-Report.pdf",
+        userName,
+        filterStartDate,
+        filterEndDate
+      );
 
-    await logSystemActivity("Exported Quota Summary Report to PDF", userName);
+      await logSystemActivity("Exported Quota Summary Report to PDF", userName);
 
-    setIsDropdownOpen(false);
-  } catch (error) {
-    console.error("Error during PDF export:", error);
-  }
-};
+      setIsDropdownOpen(false);
+    } catch (error) {
+      console.error("Error during PDF export:", error);
+    }
+  };
   // Setup all real-time listeners
   useEffect(() => {
     const initData = async () => {
@@ -413,7 +440,12 @@ const handleExportPDF = async () => {
       if (unsubscribeUsers) unsubscribeUsers();
       if (unsubscribeTransactions) unsubscribeTransactions();
     };
-  }, [setupQuotaTargetListener, setupUsersListener, setupTransactionsListener, fetchUserRole]);
+  }, [
+    setupQuotaTargetListener,
+    setupUsersListener,
+    setupTransactionsListener,
+    fetchUserRole,
+  ]);
 
   // Setup quota listener after target and users are loaded
   useEffect(() => {
@@ -443,10 +475,15 @@ const handleExportPDF = async () => {
     if (filterStatus) {
       filtered = filtered.filter((log) => {
         const currentTotal = calculateDriverTotalFare(log.personnelID);
-        const isMet = currentTotal >= log.target;
-        return filterStatus === "Met" ? isMet : !isMet;
+        const isReached = currentTotal >= log.target;
+        return filterStatus === "Reached" ? isReached : !isReached;
       });
     }
+
+    filtered = filtered.filter((log) => {
+      const currentTotal = calculateDriverTotalFare(log.personnelID);
+      return currentTotal > 0;
+    });
 
     setFilteredData(filtered);
   }, [
@@ -488,7 +525,7 @@ const handleExportPDF = async () => {
       d.driverName,
       d.target.toFixed(2),
       currentTotal.toFixed(2),
-      isMet ? "Met" : "Not Met",
+      isMet ? "Reached" : "Not Reached",
       fullDateTime,
     ];
   });
@@ -586,8 +623,8 @@ const handleExportPDF = async () => {
                     onChange={(e) => setFilterStatus(e.target.value)}
                   >
                     <option value="">Filter By Status</option>
-                    <option value="Met">Met</option>
-                    <option value="NotMet">Not Met</option>
+                    <option value="Met">Reached</option>
+                    <option value="NotMet">Not Reached</option>
                   </select>
                 </div>
               </div>
@@ -715,7 +752,7 @@ const handleExportPDF = async () => {
             {/* Pie Chart */}
             <div className="bg-white rounded-lg shadow-md p-6">
               <h2 className="text-lg font-semibold mb-4 text-gray-700">
-                Quota Met vs Not Met
+                Quota Reached vs Not Not Reached
               </h2>
               <ResponsiveContainer width="100%" height={300}>
                 <PieChart>
@@ -796,7 +833,7 @@ const handleExportPDF = async () => {
                     Current Total
                   </th>
                   <th className="px-6 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">
-                    Result
+                    Status
                   </th>
                   <th className="px-6 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">
                     Updated At
@@ -806,19 +843,21 @@ const handleExportPDF = async () => {
               <tbody className="bg-white divide-y divide-gray-200">
                 {filteredData.map((log) => {
                   const { time, date } = formatTimestamp(log.updatedAt);
-                  const currentTotal = calculateDriverTotalFare(log.personnelID);
+                  const currentTotal = calculateDriverTotalFare(
+                    log.personnelID
+                  );
                   const isMet = currentTotal >= log.target;
-                  
+
                   return (
                     <tr key={log.id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                         {log.driverName}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        ₱{log.target.toFixed(2)}
+                        {log.target.toFixed(2)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        ₱{currentTotal.toFixed(2)}
+                        {currentTotal.toFixed(2)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm">
                         <span
@@ -828,7 +867,7 @@ const handleExportPDF = async () => {
                               : "bg-red-100 text-red-800"
                           }`}
                         >
-                          {isMet ? "Met" : "Not Met"}
+                          {isMet ? "Reached" : "Not Reached"}
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">

@@ -286,15 +286,16 @@ const DashboardAnalytics = () => {
 
     filteredTransactions.forEach((transaction) => {
       const fare = parseFloat(transaction.farePrice) || 0;
-
-      newStats.totalTickets += 1;
-
+      
       if (transaction.isVoided) {
         newStats.voidedTickets += 1;
         return;
       }
 
+      // Only count non-voided transactions for fare and payment stats
+      newStats.totalTickets += 1;
       newStats.totalFare += fare;
+
       if (transaction.paymentMethod === "Cash") {
         newStats.cashPayments += 1;
         newStats.cashAmount += fare;
@@ -373,10 +374,13 @@ const DashboardAnalytics = () => {
     );
   }
 
-  // Bar chart data for top 5 routes
+  // Bar chart data for top 5 routes (excluding voided transactions)
   const topRoutesData = () => {
     const routeCount = {};
     filteredTransactions.forEach((transaction) => {
+      // Skip voided transactions
+      if (transaction.isVoided) return;
+      
       const route = transaction.route;
       if (route) {
         routeCount[route] = routeCount[route] ? routeCount[route] + 1 : 1;
@@ -442,9 +446,13 @@ const DashboardAnalytics = () => {
     };
   };
 
+  // Top drivers data (excluding voided transactions)
   const topDriversData = () => {
     const driverCount = {};
     filteredTransactions.forEach((transaction) => {
+      // Skip voided transactions
+      if (transaction.isVoided) return;
+      
       const driver = transaction.driverName;
       if (driver) {
         driverCount[driver] = driverCount[driver] ? driverCount[driver] + 1 : 1;

@@ -47,6 +47,7 @@ const getDateFromTimestamp = (timestamp) => {
 const TripLogs = () => {
   const [users, setUsers] = useState([]);
   const [transactions, setTransactions] = useState([]);
+  const [voidedTransactions, setVoidedTransactions] = useState([]);
   const [routes, setRoutes] = useState([]);
   const [selectedRoute, setSelectedRoute] = useState("");
   const [driverSearch, setDriverSearch] = useState("");
@@ -152,7 +153,7 @@ const TripLogs = () => {
     }
   }, []);
 
-  // Real-time transactions listener
+  // Real-time transactions listener (non-voided)
   const setupTransactionsListener = useCallback(() => {
     try {
       const transactionsRef = collection(db, "transactions");
@@ -183,6 +184,39 @@ const TripLogs = () => {
       return unsubscribe;
     } catch (error) {
       console.error("Error setting up transactions listener:", error);
+    }
+  }, []);
+
+  // Real-time voided transactions listener
+  const setupVoidedTransactionsListener = useCallback(() => {
+    try {
+      const transactionsRef = collection(db, "transactions");
+      const q = query(transactionsRef, where("isVoided", "==", true));
+
+      const unsubscribe = onSnapshot(q, (querySnapshot) => {
+        const voidedData = [];
+        querySnapshot.forEach((doc) => {
+          const data = doc.data();
+          voidedData.push({
+            id: doc.id,
+            driverUID: data.driverUID,
+            farePrice: data.farePrice || 0,
+            paymentMethod: data.paymentMethod || "",
+            route: data.route || "",
+            tripCount: data.tripCount || 0,
+            timestamp: data.timestamp?.toDate
+              ? data.timestamp.toDate()
+              : data.timestamp || null,
+          });
+        });
+        setVoidedTransactions(voidedData);
+      }, (error) => {
+        console.error("Error listening to voided transactions:", error);
+      });
+
+      return unsubscribe;
+    } catch (error) {
+      console.error("Error setting up voided transactions listener:", error);
     }
   }, []);
 
@@ -246,6 +280,22 @@ const TripLogs = () => {
         if (
           transaction.driverUID === driverUID &&
           transaction.paymentMethod === paymentMethod &&
+          (selectedRoute ? transaction.route === selectedRoute : true)
+        ) {
+          return total + transaction.farePrice;
+        }
+        return total;
+      },
+      0
+    );
+  };
+
+  // Get total voided transactions for a driver filtered by route/date
+  const getDriverVoidedTotal = (driverUID) => {
+    return filterTransactionsByDate(voidedTransactions).reduce(
+      (total, transaction) => {
+        if (
+          transaction.driverUID === driverUID &&
           (selectedRoute ? transaction.route === selectedRoute : true)
         ) {
           return total + transaction.farePrice;
@@ -324,6 +374,25 @@ const TripLogs = () => {
         if (
           filteredUserIds.includes(transaction.driverUID) &&
           transaction.paymentMethod === "Card" &&
+          (selectedRoute ? transaction.route === selectedRoute : true)
+        ) {
+          return total + transaction.farePrice;
+        }
+        return total;
+      },
+      0
+    );
+  };
+
+  // Get total voided fare - ONLY from filtered users
+  const getTotalVoidedFare = () => {
+    const filteredUsers = getFilteredUsers();
+    const filteredUserIds = filteredUsers.map((user) => user.id);
+
+    return filterTransactionsByDate(voidedTransactions).reduce(
+      (total, transaction) => {
+        if (
+          filteredUserIds.includes(transaction.driverUID) &&
           (selectedRoute ? transaction.route === selectedRoute : true)
         ) {
           return total + transaction.farePrice;
@@ -445,14 +514,16 @@ const TripLogs = () => {
 
     const unsubscribeUsers = setupUsersListener();
     const unsubscribeTransactions = setupTransactionsListener();
+    const unsubscribeVoidedTransactions = setupVoidedTransactionsListener();
     const unsubscribeRoutes = setupRoutesListener();
 
     return () => {
       if (unsubscribeUsers) unsubscribeUsers();
       if (unsubscribeTransactions) unsubscribeTransactions();
+      if (unsubscribeVoidedTransactions) unsubscribeVoidedTransactions();
       if (unsubscribeRoutes) unsubscribeRoutes();
     };
-  }, [setupUsersListener, setupTransactionsListener, setupRoutesListener, fetchUserRole]);
+  }, [setupUsersListener, setupTransactionsListener, setupVoidedTransactionsListener, setupRoutesListener, fetchUserRole]);
 
   const toggleDropdown = () => setIsDropdownOpen(!isDropdownOpen);
 
@@ -461,12 +532,14 @@ const TripLogs = () => {
     "Total Fare Collected",
     "Cash Fare Collected",
     "Card Fare Collected",
+    "Total Voided",
     "Trip Count",
   ];
   const rows = filteredUsers.map((user) => {
     const cashFare = getDriverFareByMethod(user.id, "Cash");
     const cardFare = getDriverFareByMethod(user.id, "Card");
     const totalFare = cashFare + cardFare;
+    const voidedTotal = getDriverVoidedTotal(user.id);
     const tripCount = getDriverTripCount(user.id);
 
     return [
@@ -474,6 +547,7 @@ const TripLogs = () => {
       totalFare.toFixed(2),
       cashFare.toFixed(2),
       cardFare.toFixed(2),
+      voidedTotal.toFixed(2),
       tripCount,
     ];
   });
@@ -638,7 +712,7 @@ const TripLogs = () => {
           )}
 
           {/* Dashboard Cards */}
-          <div className="px-6 py-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="px-6 py-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
             {/* Total Fare Collection */}
             <div className="bg-white rounded-lg shadow-md p-6 flex items-center justify-between">
               <div
@@ -700,6 +774,34 @@ const TripLogs = () => {
               </div>
             </div>
 
+            {/* Total Voided */}
+            <div className="bg-white rounded-lg shadow-md p-6 flex items-center justify-between">
+              <div className="flex items-center justify-center w-12 h-12 rounded-full mr-4 bg-red-100">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="w-6 h-6 text-red-600"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </div>
+              <div>
+                <p className="text-sm font-medium text-gray-600">
+                  Total Voided
+                </p>
+                <p className="text-2xl font-bold text-gray-900">
+                  ₱ {getTotalVoidedFare().toFixed(2)}
+                </p>
+              </div>
+            </div>
+
             {/* Total Trip Count */}
             <div className="bg-white rounded-lg shadow-md p-6 flex items-center justify-between">
               <div className="flex items-center justify-center w-12 h-12 rounded-full mr-4 bg-purple-100">
@@ -747,6 +849,9 @@ const TripLogs = () => {
                     Card Fare Collected
                   </th>
                   <th className="px-6 py-3 text-left text-sm font-medium text-white uppercase tracking-wider">
+                    Total Voided
+                  </th>
+                  <th className="px-6 py-3 text-left text-sm font-medium text-white uppercase tracking-wider">
                     Trip Count
                   </th>
                 </tr>
@@ -755,7 +860,7 @@ const TripLogs = () => {
                 {currentItems.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={5}
+                      colSpan={6}
                       className="px-6 py-4 text-center text-sm text-gray-500"
                     >
                       No drivers found.
@@ -766,6 +871,7 @@ const TripLogs = () => {
                     const cashFare = getDriverFareByMethod(user.id, "Cash");
                     const cardFare = getDriverFareByMethod(user.id, "Card");
                     const totalFare = cashFare + cardFare;
+                    const voidedTotal = getDriverVoidedTotal(user.id);
                     const tripCount = getDriverTripCount(user.id);
 
                     return (
@@ -773,17 +879,30 @@ const TripLogs = () => {
                         <td className="px-6 py-4 text-sm text-gray-900">
                           {user.displayName}
                         </td>
-                        <td className="px-6 py-4 text-sm text-gray-900">
-                          ₱ {totalFare.toFixed(2)}
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
+                            ₱ {totalFare.toFixed(2)}
+                          </span>
                         </td>
-                        <td className="px-6 py-4 text-sm text-gray-900">
-                          ₱ {cashFare.toFixed(2)}
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-50 text-green-700 border border-green-200">
+                            ₱ {cashFare.toFixed(2)}
+                          </span>
                         </td>
-                        <td className="px-6 py-4 text-sm text-gray-900">
-                          ₱ {cardFare.toFixed(2)}
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                            ₱ {cardFare.toFixed(2)}
+                          </span>
                         </td>
-                        <td className="px-6 py-4 text-sm text-gray-900">
-                          {tripCount}
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-red-100 text-red-800">
+                            ₱ {voidedTotal.toFixed(2)}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-purple-100 text-purple-800">
+                            {tripCount}
+                          </span>
                         </td>
                       </tr>
                     );
@@ -794,7 +913,6 @@ const TripLogs = () => {
           </div>
 
           {/* Pagination Controls */}
-         {/* Pagination Controls */}
           {filteredUsers.length > 0 && (
             <div className="px-6 py-4 border-t flex items-center justify-between">
               <div className="text-sm text-gray-500">

@@ -410,11 +410,11 @@ const TransactionOverview = () => {
     setFilteredTransactions(filtered);
   }, [startDate, endDate, transactions, selectedRoute, search]);
 
-  // Calculate statistics
+  // Calculate statistics - FIXED: Exclude voided transactions from total tickets count
   const calculateStats = useCallback(() => {
     const newStats = {
       totalSales: 0,
-      totalTickets: 0,
+      totalTickets: 0, // This will now only count non-voided tickets
       voidedTickets: 0,
       cashPayments: 0,
       cardPayments: 0,
@@ -425,16 +425,15 @@ const TransactionOverview = () => {
     filteredTransactions.forEach((transaction) => {
       const fare = parseFloat(transaction.farePrice) || 0;
 
-      // Count all tickets
-      newStats.totalTickets += 1;
-
       if (transaction.isVoided) {
         newStats.voidedTickets += 1;
-        return;
+        return; // Skip voided transactions for other counts
       }
 
-      // Count fare and payment methods
+      // Count only non-voided tickets
+      newStats.totalTickets += 1;
       newStats.totalSales += fare;
+      
       if (transaction.paymentMethod === "Cash") {
         newStats.cashPayments += 1;
         newStats.cashAmount += fare;
@@ -603,7 +602,7 @@ const handleExportPDF = async () => {
     );
   }
 
-  // Bar chart data for Cash and Card payment methods
+  // Bar chart data for Cash and Card payment methods - FIXED: Only non-voided transactions
   const paymentMethodData = () => {
     return {
       labels: ["Cash", "Card"],
@@ -619,7 +618,7 @@ const handleExportPDF = async () => {
     };
   };
 
-  // Line chart data for total sales per month
+  // Line chart data for total sales per month - FIXED: Only non-voided transactions
   const totalSalesPerMonthData = () => {
     const monthlySales = {};
 
