@@ -151,28 +151,6 @@ export default function UnitTracking() {
     return ["All Routes", ...new Set(routes)];
   }, [unitTrackingData]);
 
-  // Filter units based on selected route, search term, and updatedAt today
-  const getFilteredUnits = useCallback(() => {
-    // Filter by updatedAt today only
-    let filtered = unitTrackingData.filter((trackingUnit) =>
-      isToday(trackingUnit.updatedAt)
-    );
-
-    if (selectedRoute !== "All Routes") {
-      filtered = filtered.filter((unit) => unit.route === selectedRoute);
-    }
-
-    if (searchTerm) {
-      filtered = filtered.filter(
-        (unit) =>
-          unit.vehicleId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          unit.route.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-    }
-
-    return filtered;
-  }, [unitTrackingData, selectedRoute, searchTerm]);
-
   const getParticular = useCallback(
     (unitHolder) => {
       if (!unitHolder) return "No Particular";
@@ -274,15 +252,10 @@ export default function UnitTracking() {
 
     filteredUnits.forEach((unitTracking) => {
       // Find the unit info from 'unit' collection
-      const unitData = unitsData.find((u) => u.unitID === unitTracking.unitID);
-      const unitHolderId =
-        selectedUnit?.unitHolder ||
-        driverLogs.find((dl) => dl.vehicleID === selectedUnit?.vehicleId)
-          ?.personnelID ||
-        null;
-      const vehicleId = unitData?.vehicleID || unitTracking.unitID;
+      const unitHolderId = unitTracking.unitHolder;
+      const vehicleId = unitTracking.vehicleId || unitTracking.unitId;
 
-      // Get driver name from driver logs
+      // Get driver name
       const driverName = unitHolderId
         ? getDriverName(unitHolderId)
         : "No Driver Found";
@@ -292,8 +265,8 @@ export default function UnitTracking() {
 
       // Determine icon color based on vehicle status
       const iconColor =
-        unitData?.status?.toLowerCase() === "active" ||
-        unitData?.status?.toLowerCase() === "moving"
+        (unitTracking.status || "").toLowerCase() === "active" ||
+        (unitTracking.status || "").toLowerCase() === "moving"
           ? "#10b981"
           : "#6b7280";
 
@@ -367,7 +340,9 @@ export default function UnitTracking() {
       leafletMap.current.fitBounds(group.getBounds().pad(0.1));
     }
   }, [
-    getFilteredUnits,
+    mergedDataTracking,
+    selectedRoute,
+    searchTerm,
     unitsData,
     getDriverName,
     getStatusInfo,
@@ -406,7 +381,7 @@ export default function UnitTracking() {
               attribution:
                 '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
               subdomains: "abcd",
-              maxZoom: 10,
+              maxZoom: 20,
             }
           ).addTo(leafletMap.current);
 
@@ -429,7 +404,7 @@ export default function UnitTracking() {
     if (selectedUnit && leafletMap.current) {
       leafletMap.current.setView(
         [selectedUnit.latitude, selectedUnit.longitude],
-        25
+        15
       );
     } else if (!selectedUnit && leafletMap.current) {
       updateMapMarkers(); // Refocus on all units
