@@ -46,6 +46,7 @@ const getDateFromTimestamp = (timestamp) => {
 
 const TripLogs = () => {
   const [users, setUsers] = useState([]);
+  const [dispatchedDriversMap, setDispatchedDriversMap] = useState(new Map());
   const [transactions, setTransactions] = useState([]);
   const [voidedTransactions, setVoidedTransactions] = useState([]);
   const [routes, setRoutes] = useState([]);
@@ -117,7 +118,54 @@ const TripLogs = () => {
     }
   };
 
-  // Real-time users listener
+  // Real-time listener for unit collection to get dispatched drivers with their routes
+  const setupDispatchedDriversListener = useCallback(() => {
+    try {
+      const unitRef = collection(db, "unit");
+      const q = query(unitRef, where("status", "==", "Dispatched"));
+
+      const unsubscribe = onSnapshot(q, async (querySnapshot) => {
+        const dispatchedMap = new Map();
+        
+        for (const docSnap of querySnapshot.docs) {
+          const data = docSnap.data();
+          if (data.unitHolder && data.vehicleID) {
+            // Fetch vehicle to get routeId
+            try {
+              const vehicleRef = collection(db, "vehicle");
+              const vehicleQuery = query(vehicleRef, where("vehicleID", "==", data.vehicleID));
+              const vehicleSnapshot = await onSnapshot(vehicleQuery, (vSnap) => {
+                vSnap.forEach((vDoc) => {
+                  const vehicleData = vDoc.data();
+                  if (vehicleData.routeId) {
+                    // Fetch route name from routes collection
+                    const routeRef = doc(db, "routes", vehicleData.routeId);
+                    onSnapshot(routeRef, (routeDoc) => {
+                      if (routeDoc.exists()) {
+                        const routeData = routeDoc.data();
+                        dispatchedMap.set(data.unitHolder, routeData.Route || null);
+                        setDispatchedDriversMap(new Map(dispatchedMap));
+                      }
+                    });
+                  }
+                });
+              });
+            } catch (error) {
+              console.error("Error fetching vehicle/route for dispatched driver:", error);
+            }
+          }
+        }
+      }, (error) => {
+        console.error("Error listening to dispatched units:", error);
+      });
+
+      return unsubscribe;
+    } catch (error) {
+      console.error("Error setting up dispatched drivers listener:", error);
+    }
+  }, []);
+
+  // Real-time users listener - filter by dispatched drivers
   const setupUsersListener = useCallback(() => {
     try {
       const usersRef = collection(db, "users");
@@ -131,12 +179,16 @@ const TripLogs = () => {
         const userData = [];
         querySnapshot.forEach((doc) => {
           const data = doc.data();
-          userData.push({
-            id: doc.id,
-            displayName: `${data.firstName || ""} ${data.lastName || ""}`.trim(),
-            role: data.role,
-            status: data.status,
-          });
+          // Only add if driver is in the dispatched list
+          if (dispatchedDriversMap.has(doc.id)) {
+            userData.push({
+              id: doc.id,
+              displayName: `${data.firstName || ""} ${data.lastName || ""}`.trim(),
+              role: data.role,
+              status: data.status,
+              dispatchedRoute: dispatchedDriversMap.get(doc.id),
+            });
+          }
         });
         setUsers(userData);
         setLoading(false);
@@ -151,7 +203,7 @@ const TripLogs = () => {
       console.error("Error setting up users listener:", error);
       setLoading(false);
     }
-  }, []);
+  }, [dispatchedDriversMap]);
 
   // Real-time transactions listener (non-voided)
   const setupTransactionsListener = useCallback(() => {
@@ -245,8 +297,8 @@ const TripLogs = () => {
   }, []);
 
   // Filter transactions by date range
-  const filterTransactionsByDate = (transactions) => {
-    return transactions.filter((transaction) => {
+  const filterTransactionsByDate = (transactionsList) => {
+    return transactionsList.filter((transaction) => {
       let matchesDateFilter = true;
       if (selectedStartDate || selectedEndDate) {
         const logDate = getDateFromTimestamp(transaction.timestamp);
@@ -273,65 +325,77 @@ const TripLogs = () => {
     });
   };
 
-  // Get total fare collected by a driver for a payment method & filtered by route/date
+  // Get ALL filtered transactions (for dashboard totals)
+  const getAllFilteredTransactions = () => {
+    let filtered = filterTransactionsByDate(transactions);
+    
+    if (selectedRoute) {
+      filtered = filtered.filter(transaction => transaction.route === selectedRoute);
+    }
+    
+    return filtered;
+  };
+
+  // Get ALL filtered voided transactions (for dashboard totals)
+  const getAllFilteredVoidedTransactions = () => {
+    let filtered = filterTransactionsByDate(voidedTransactions);
+    
+    if (selectedRoute) {
+      filtered = filtered.filter(transaction => transaction.route === selectedRoute);
+    }
+    
+    return filtered;
+  };
+
+  // Get transactions for a specific driver
+  const getDriverTransactions = (driverUID) => {
+    const allFiltered = getAllFilteredTransactions();
+    return allFiltered.filter(transaction => transaction.driverUID === driverUID);
+  };
+
+  // Get voided transactions for a specific driver
+  const getDriverVoidedTransactions = (driverUID) => {
+    const allFilteredVoided = getAllFilteredVoidedTransactions();
+    return allFilteredVoided.filter(transaction => transaction.driverUID === driverUID);
+  };
+
+  // Get total fare collected by a driver for a payment method
   const getDriverFareByMethod = (driverUID, paymentMethod) => {
-    return filterTransactionsByDate(transactions).reduce(
-      (total, transaction) => {
-        if (
-          transaction.driverUID === driverUID &&
-          transaction.paymentMethod === paymentMethod &&
-          (selectedRoute ? transaction.route === selectedRoute : true)
-        ) {
-          return total + transaction.farePrice;
-        }
-        return total;
-      },
-      0
-    );
+    const driverTransactions = getDriverTransactions(driverUID);
+    return driverTransactions.reduce((total, transaction) => {
+      if (transaction.paymentMethod === paymentMethod) {
+        return total + (transaction.farePrice || 0);
+      }
+      return total;
+    }, 0);
   };
 
-  // Get total voided transactions for a driver filtered by route/date
+  // Get total voided transactions for a driver
   const getDriverVoidedTotal = (driverUID) => {
-    return filterTransactionsByDate(voidedTransactions).reduce(
-      (total, transaction) => {
-        if (
-          transaction.driverUID === driverUID &&
-          (selectedRoute ? transaction.route === selectedRoute : true)
-        ) {
-          return total + transaction.farePrice;
-        }
-        return total;
-      },
-      0
-    );
+    const driverVoidedTransactions = getDriverVoidedTransactions(driverUID);
+    return driverVoidedTransactions.reduce((total, transaction) => {
+      return total + (transaction.farePrice || 0);
+    }, 0);
   };
 
-  // Get distinct trip count for a driver filtered by route/date
+  // Get distinct trip count for a driver
   const getDriverTripCount = (driverUID) => {
-    const filteredTransactions = filterTransactionsByDate(transactions).filter(
-      (transaction) =>
-        transaction.driverUID === driverUID &&
-        (selectedRoute ? transaction.route === selectedRoute : true)
-    );
-
+    const driverTransactions = getDriverTransactions(driverUID);
     const distinctTripCounts = [
-      ...new Set(filteredTransactions.map((t) => t.tripCount)),
+      ...new Set(driverTransactions.map((t) => t.tripCount).filter(t => t !== undefined && t !== null)),
     ];
-
     return distinctTripCounts.length > 0 ? Math.max(...distinctTripCounts) : 0;
   };
 
-  // Filter users who have transactions on selected route and by driver search
+  // Filter users who have transactions on their dispatched route and by driver search
   const getFilteredUsers = () => {
-    let filtered = selectedRoute
-      ? users.filter((user) =>
-          transactions.some(
-            (transaction) =>
-              transaction.driverUID === user.id &&
-              transaction.route === selectedRoute
-          )
-        )
-      : users;
+    let filtered = users.filter((user) => {
+      // If a route is selected, only show drivers dispatched to that route
+      if (selectedRoute) {
+        return user.dispatchedRoute === selectedRoute;
+      }
+      return true;
+    });
 
     if (driverSearch.trim()) {
       const searchQuery = driverSearch.trim().toLowerCase();
@@ -344,91 +408,56 @@ const TripLogs = () => {
     return filtered;
   };
 
-  // Get total cash fare collected - ONLY from filtered users
+  // DASHBOARD TOTALS - Calculate from ALL filtered transactions (not per driver)
   const getTotalCashFareCollected = () => {
-    const filteredUsers = getFilteredUsers();
-    const filteredUserIds = filteredUsers.map((user) => user.id);
-
-    return filterTransactionsByDate(transactions).reduce(
-      (total, transaction) => {
-        if (
-          filteredUserIds.includes(transaction.driverUID) &&
-          transaction.paymentMethod === "Cash" &&
-          (selectedRoute ? transaction.route === selectedRoute : true)
-        ) {
-          return total + transaction.farePrice;
-        }
-        return total;
-      },
-      0
-    );
-  };
-
-  // Get total card fare collected - ONLY from filtered users
-  const getTotalCardFareCollected = () => {
-    const filteredUsers = getFilteredUsers();
-    const filteredUserIds = filteredUsers.map((user) => user.id);
-
-    return filterTransactionsByDate(transactions).reduce(
-      (total, transaction) => {
-        if (
-          filteredUserIds.includes(transaction.driverUID) &&
-          transaction.paymentMethod === "Card" &&
-          (selectedRoute ? transaction.route === selectedRoute : true)
-        ) {
-          return total + transaction.farePrice;
-        }
-        return total;
-      },
-      0
-    );
-  };
-
-  // Get total voided fare - ONLY from filtered users
-  const getTotalVoidedFare = () => {
-    const filteredUsers = getFilteredUsers();
-    const filteredUserIds = filteredUsers.map((user) => user.id);
-
-    return filterTransactionsByDate(voidedTransactions).reduce(
-      (total, transaction) => {
-        if (
-          filteredUserIds.includes(transaction.driverUID) &&
-          (selectedRoute ? transaction.route === selectedRoute : true)
-        ) {
-          return total + transaction.farePrice;
-        }
-        return total;
-      },
-      0
-    );
-  };
-
-  // Get total trip count by summing distinct trip counts from filtered drivers
-  const getTotalTripCount = () => {
-    const filteredUsers = getFilteredUsers();
-
-    return filteredUsers.reduce((total, user) => {
-      return total + getDriverTripCount(user.id);
+    const allFiltered = getAllFilteredTransactions();
+    return allFiltered.reduce((total, transaction) => {
+      if (transaction.paymentMethod === "Cash") {
+        return total + (transaction.farePrice || 0);
+      }
+      return total;
     }, 0);
   };
 
-  // Get total fare collected for dashboard card - ONLY from filtered users
-  const getTotalFareCollected = () => {
-    const filteredUsers = getFilteredUsers();
-    const filteredUserIds = filteredUsers.map((user) => user.id);
+  const getTotalCardFareCollected = () => {
+    const allFiltered = getAllFilteredTransactions();
+    return allFiltered.reduce((total, transaction) => {
+      if (transaction.paymentMethod === "Card") {
+        return total + (transaction.farePrice || 0);
+      }
+      return total;
+    }, 0);
+  };
 
-    return filterTransactionsByDate(transactions).reduce(
-      (total, transaction) => {
-        if (
-          filteredUserIds.includes(transaction.driverUID) &&
-          (selectedRoute ? transaction.route === selectedRoute : true)
-        ) {
-          return total + transaction.farePrice;
-        }
-        return total;
-      },
-      0
-    );
+  const getTotalVoidedFare = () => {
+    const allFilteredVoided = getAllFilteredVoidedTransactions();
+    return allFilteredVoided.reduce((total, transaction) => {
+      return total + (transaction.farePrice || 0);
+    }, 0);
+  };
+
+  const getTotalTripCount = () => {
+    const allFiltered = getAllFilteredTransactions();
+    const driversTripCounts = {};
+    
+    allFiltered.forEach(transaction => {
+      const driverUID = transaction.driverUID;
+      const tripCount = transaction.tripCount || 0;
+      
+      if (!driversTripCounts[driverUID]) {
+        driversTripCounts[driverUID] = [];
+      }
+      driversTripCounts[driverUID].push(tripCount);
+    });
+    
+    // Sum the maximum trip count for each driver
+    return Object.values(driversTripCounts).reduce((total, tripCounts) => {
+      return total + (tripCounts.length > 0 ? Math.max(...tripCounts) : 0);
+    }, 0);
+  };
+
+  const getTotalFareCollected = () => {
+    return getTotalCashFareCollected() + getTotalCardFareCollected();
   };
 
   // Reset filters function
@@ -512,18 +541,31 @@ const TripLogs = () => {
     };
     initData();
 
-    const unsubscribeUsers = setupUsersListener();
+    const unsubscribeDispatchedDrivers = setupDispatchedDriversListener();
     const unsubscribeTransactions = setupTransactionsListener();
     const unsubscribeVoidedTransactions = setupVoidedTransactionsListener();
     const unsubscribeRoutes = setupRoutesListener();
 
     return () => {
-      if (unsubscribeUsers) unsubscribeUsers();
+      if (unsubscribeDispatchedDrivers) unsubscribeDispatchedDrivers();
       if (unsubscribeTransactions) unsubscribeTransactions();
       if (unsubscribeVoidedTransactions) unsubscribeVoidedTransactions();
       if (unsubscribeRoutes) unsubscribeRoutes();
     };
-  }, [setupUsersListener, setupTransactionsListener, setupVoidedTransactionsListener, setupRoutesListener, fetchUserRole]);
+  }, [setupDispatchedDriversListener, setupTransactionsListener, setupVoidedTransactionsListener, setupRoutesListener, fetchUserRole]);
+
+  // Setup users listener when dispatched drivers are loaded
+  useEffect(() => {
+    if (dispatchedDriversMap.size > 0) {
+      const unsubscribeUsers = setupUsersListener();
+      return () => {
+        if (unsubscribeUsers) unsubscribeUsers();
+      };
+    } else {
+      setUsers([]);
+      setLoading(false);
+    }
+  }, [dispatchedDriversMap, setupUsersListener]);
 
   const toggleDropdown = () => setIsDropdownOpen(!isDropdownOpen);
 
@@ -863,7 +905,7 @@ const TripLogs = () => {
                       colSpan={6}
                       className="px-6 py-4 text-center text-sm text-gray-500"
                     >
-                      No drivers found.
+                      No dispatched drivers found.
                     </td>
                   </tr>
                 ) : (

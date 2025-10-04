@@ -752,7 +752,7 @@ const QuotaSummary = () => {
             {/* Pie Chart */}
             <div className="bg-white rounded-lg shadow-md p-6">
               <h2 className="text-lg font-semibold mb-4 text-gray-700">
-                Quota Reached vs Not Not Reached
+                Quota Reached vs Not Reached
               </h2>
               <ResponsiveContainer width="100%" height={300}>
                 <PieChart>

@@ -814,7 +814,7 @@ const DashboardAnalytics = () => {
           <div className="flex-1">
             <Pie
               data={{
-                labels: ["Quota Met", "Quota Not Met"],
+                labels: ["Quota Reached", "Quota Not Reached"],
                 datasets: [
                   {
                     data: [

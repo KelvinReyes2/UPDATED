@@ -310,47 +310,74 @@ const TransactionOverview = () => {
 
     const transactionDateString = getDateString(transactionDate);
 
-    console.log("Looking for unit assignment:", {
-      driverUID,
-      transactionDate: transactionDateString,
-      unitLogsCount: unitLogs.length
-    });
-
     // Find matching unit log for this driver on this date
+    // Check multiple possible field names for the unit assignment
     const matchingLog = unitLogs.find((log) => {
       // Check if the unitHolder matches the driverUID
-      if (log.unitHolder !== driverUID) {
+      // Try multiple possible field names
+      const logDriverUID = log.unitHolder || log.driverUID || log.driver;
+      if (logDriverUID !== driverUID) {
         return false;
       }
 
-      // Get the assigned date from the log
-      const assignedDate = getDateFromTimestamp(log.assignedAt || log.assigned);
+      // Get the assigned date from the log - try multiple possible field names
+      const assignedDate = getDateFromTimestamp(
+        log.assignedAt || 
+        log.assigned || 
+        log.timestamp || 
+        log.createdAt ||
+        log.date
+      );
+      
       if (!assignedDate) {
-        console.log("No assigned date found for log:", log.id);
         return false;
       }
 
       const assignedDateString = getDateString(assignedDate);
 
-      console.log("Comparing dates:", {
-        logId: log.id,
-        unit: log.unit,
-        assignedDate: assignedDateString,
-        transactionDate: transactionDateString,
-        matches: assignedDateString === transactionDateString
-      });
-
       // Check if the transaction date matches the assigned date
       return assignedDateString === transactionDateString;
     });
 
-    // Return the unit if found
-    if (matchingLog && matchingLog.unit) {
-      console.log("Found matching unit:", matchingLog.unit);
-      return matchingLog.unit;
+    // Return the unit if found - try multiple possible field names
+    if (matchingLog) {
+      const unitNumber = matchingLog.unit || matchingLog.unitNumber || matchingLog.unitId;
+      if (unitNumber) {
+        return unitNumber;
+      }
     }
 
-    console.log("No matching unit found for driver:", driverUID, "on date:", transactionDateString);
+    // If no exact date match, try to find the most recent assignment before or on the transaction date
+    const validLogs = unitLogs
+      .filter((log) => {
+        const logDriverUID = log.unitHolder || log.driverUID || log.driver;
+        return logDriverUID === driverUID;
+      })
+      .map((log) => {
+        const assignedDate = getDateFromTimestamp(
+          log.assignedAt || 
+          log.assigned || 
+          log.timestamp || 
+          log.createdAt ||
+          log.date
+        );
+        return {
+          ...log,
+          parsedDate: assignedDate,
+          dateString: getDateString(assignedDate)
+        };
+      })
+      .filter((log) => log.parsedDate && log.dateString <= transactionDateString)
+      .sort((a, b) => b.parsedDate - a.parsedDate);
+
+    if (validLogs.length > 0) {
+      const mostRecentLog = validLogs[0];
+      const unitNumber = mostRecentLog.unit || mostRecentLog.unitNumber || mostRecentLog.unitId;
+      if (unitNumber) {
+        return unitNumber;
+      }
+    }
+
     return "No Unit Assigned";
   };
 
@@ -616,32 +643,56 @@ const TransactionOverview = () => {
     };
   };
 
-  // Line chart data for total sales per day with day of week
+  // Line chart data for total sales per day with day of week - MODIFIED TO SHOW PAST 6 DAYS
   const totalSalesPerDayData = () => {
+    // Determine the end date for the chart (use endDate if set, otherwise use startDate)
+    const chartEndDate = endDate ? new Date(endDate + "T00:00:00") : new Date(startDate + "T00:00:00");
+    
+    // Calculate the start date for the chart (6 days before the end date)
+    const chartStartDate = new Date(chartEndDate);
+    chartStartDate.setDate(chartStartDate.getDate() - 6);
+    
+    // Create an array of all 7 dates (past 6 days + the current/end date)
+    const allDates = [];
+    for (let i = 0; i <= 6; i++) {
+      const date = new Date(chartStartDate);
+      date.setDate(date.getDate() + i);
+      allDates.push(getDateString(date));
+    }
+    
+    // Initialize sales object with all dates set to 0
     const dailySales = {};
+    allDates.forEach(dateString => {
+      dailySales[dateString] = 0;
+    });
 
-    // Only include transactions that are not voided
-    filteredTransactions
+    // Use ALL transactions (not filtered) for the chart, but still apply route filter if selected
+    let chartTransactions = transactions;
+    
+    // Apply route filter if one is selected
+    if (selectedRoute) {
+      chartTransactions = chartTransactions.filter(
+        (transaction) => transaction.route === selectedRoute
+      );
+    }
+
+    // Only include transactions that are not voided and within the chart date range
+    chartTransactions
       .filter((transaction) => !transaction.isVoided)
       .forEach((transaction) => {
         const date = new Date(transaction.timestamp);
         const dateString = getDateString(date);
 
-        // Sum farePrice for each day
-        const fare = parseFloat(transaction.farePrice) || 0;
-        const roundedFare = Math.round(fare * 100) / 100;
-        if (dailySales[dateString]) {
+        // Only include if the transaction falls within our 7-day chart range
+        if (allDates.includes(dateString)) {
+          const fare = parseFloat(transaction.farePrice) || 0;
+          const roundedFare = Math.round(fare * 100) / 100;
           dailySales[dateString] += roundedFare;
-        } else {
-          dailySales[dateString] = roundedFare;
         }
       });
 
-    // Sort dates chronologically
-    const sortedDates = Object.keys(dailySales).sort();
-
-    // Prepare the sales data with day of week labels
-    const salesData = sortedDates.map((dateString) => {
+    // Prepare the sales data with day of week labels for all 7 days
+    const salesData = allDates.map((dateString) => {
       const [year, month, day] = dateString.split("-");
       const date = new Date(year, month - 1, day);
       
@@ -901,7 +952,7 @@ const TransactionOverview = () => {
                     align: "start",
                   },
                 },
-                }}
+              }}
               className="h-full w-full"
             />
           </div>
@@ -1086,5 +1137,3 @@ const TransactionOverview = () => {
 };
 
 export default TransactionOverview;
-              
-     
