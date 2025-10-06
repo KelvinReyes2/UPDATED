@@ -308,52 +308,22 @@ const TransactionOverview = () => {
     const transactionDate = getDateFromTimestamp(transactionTimestamp);
     if (!transactionDate) return "No Unit Assigned";
 
-    const transactionDateString = getDateString(transactionDate);
-
-    // Find matching unit log for this driver on this date
-    // Check multiple possible field names for the unit assignment
-    const matchingLog = unitLogs.find((log) => {
+    // Find all unit logs for this driver
+    const driverUnitLogs = unitLogs.filter((log) => {
       // Check if the unitHolder matches the driverUID
-      // Try multiple possible field names
-      const logDriverUID = log.unitHolder || log.driverUID || log.driver;
-      if (logDriverUID !== driverUID) {
-        return false;
-      }
-
-      // Get the assigned date from the log - try multiple possible field names
-      const assignedDate = getDateFromTimestamp(
-        log.assignedAt || 
-        log.assigned || 
-        log.timestamp || 
-        log.createdAt ||
-        log.date
-      );
-      
-      if (!assignedDate) {
-        return false;
-      }
-
-      const assignedDateString = getDateString(assignedDate);
-
-      // Check if the transaction date matches the assigned date
-      return assignedDateString === transactionDateString;
+      // Try multiple possible field names based on your screenshot
+      const logDriverUID = log.unitHolder || log.driverUID || log.driver || log.untitledder;
+      return logDriverUID === driverUID;
     });
 
-    // Return the unit if found - try multiple possible field names
-    if (matchingLog) {
-      const unitNumber = matchingLog.unit || matchingLog.unitNumber || matchingLog.unitId;
-      if (unitNumber) {
-        return unitNumber;
-      }
+    if (driverUnitLogs.length === 0) {
+      return "No Unit Assigned";
     }
 
-    // If no exact date match, try to find the most recent assignment before or on the transaction date
-    const validLogs = unitLogs
-      .filter((log) => {
-        const logDriverUID = log.unitHolder || log.driverUID || log.driver;
-        return logDriverUID === driverUID;
-      })
+    // Process each log to get assignment date and unit
+    const processedLogs = driverUnitLogs
       .map((log) => {
+        // Get the assigned date from the log - try multiple possible field names
         const assignedDate = getDateFromTimestamp(
           log.assignedAt || 
           log.assigned || 
@@ -361,24 +331,41 @@ const TransactionOverview = () => {
           log.createdAt ||
           log.date
         );
+        
+        if (!assignedDate) {
+          return null;
+        }
+
+        // Get the unit - try multiple possible field names
+        const unitNumber = log.unit || log.unitNumber || log.unitId;
+        if (!unitNumber) {
+          return null;
+        }
+
         return {
-          ...log,
-          parsedDate: assignedDate,
-          dateString: getDateString(assignedDate)
+          assignedDate,
+          unitNumber,
+          timestamp: assignedDate.getTime()
         };
       })
-      .filter((log) => log.parsedDate && log.dateString <= transactionDateString)
-      .sort((a, b) => b.parsedDate - a.parsedDate);
+      .filter(log => log !== null)
+      .sort((a, b) => b.timestamp - a.timestamp); // Sort by most recent first
 
-    if (validLogs.length > 0) {
-      const mostRecentLog = validLogs[0];
-      const unitNumber = mostRecentLog.unit || mostRecentLog.unitNumber || mostRecentLog.unitId;
-      if (unitNumber) {
-        return unitNumber;
-      }
+    if (processedLogs.length === 0) {
+      return "No Unit Assigned";
     }
 
-    return "No Unit Assigned";
+    // Find the most recent unit assignment that occurred ON OR BEFORE the transaction date
+    const validAssignment = processedLogs.find(log => 
+      log.assignedDate <= transactionDate
+    );
+
+    // If no assignment found that occurred before the transaction, 
+    // use the most recent assignment (even if it's after the transaction)
+    // This handles cases where unit was assigned after the transaction
+    const assignmentToUse = validAssignment || processedLogs[0];
+
+    return assignmentToUse ? assignmentToUse.unitNumber : "No Unit Assigned";
   };
 
   // Filter transactions by date range, route, and search

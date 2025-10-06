@@ -846,10 +846,10 @@ const TripLogs = () => {
 
             {/* Total Trip Count */}
             <div className="bg-white rounded-lg shadow-md p-6 flex items-center justify-between">
-              <div className="flex items-center justify-center w-12 h-12 rounded-full mr-4 bg-purple-100">
+              <div className="flex items-center justify-center w-12 h-12 rounded-full mr-4 bg-indigo-100">
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
-                  className="w-6 h-6 text-purple-600"
+                  className="w-6 h-6 text-indigo-600"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -942,7 +942,7 @@ const TripLogs = () => {
                           </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-purple-100 text-purple-800">
+                          <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-indigo-100 text-indigo-800">
                             {tripCount}
                           </span>
                         </td>
