@@ -484,25 +484,26 @@ const TripLogs = () => {
     }, 0);
   };
 
-  const getTotalTripCount = () => {
-    const allFiltered = getAllFilteredTransactions(selectedTripCount);
-    const driversTripCounts = {};
+ const getTotalTripCount = () => {
+  // Always use "all" to ignore the trip count filter for the dashboard card
+  const allFiltered = getAllFilteredTransactions("all");
+  const driversTripCounts = {};
+  
+  allFiltered.forEach(transaction => {
+    const driverUID = transaction.driverUID;
+    const tripCount = transaction.tripCount || 0;
     
-    allFiltered.forEach(transaction => {
-      const driverUID = transaction.driverUID;
-      const tripCount = transaction.tripCount || 0;
-      
-      if (!driversTripCounts[driverUID]) {
-        driversTripCounts[driverUID] = [];
-      }
-      driversTripCounts[driverUID].push(tripCount);
-    });
-    
-    // Sum the maximum trip count for each driver
-    return Object.values(driversTripCounts).reduce((total, tripCounts) => {
-      return total + (tripCounts.length > 0 ? Math.max(...tripCounts) : 0);
-    }, 0);
-  };
+    if (!driversTripCounts[driverUID]) {
+      driversTripCounts[driverUID] = [];
+    }
+    driversTripCounts[driverUID].push(tripCount);
+  });
+  
+  // Sum the maximum trip count for each driver
+  return Object.values(driversTripCounts).reduce((total, tripCounts) => {
+    return total + (tripCounts.length > 0 ? Math.max(...tripCounts) : 0);
+  }, 0);
+};
 
   const getTotalFareCollected = () => {
     return getTotalCashFareCollected() + getTotalCardFareCollected();
