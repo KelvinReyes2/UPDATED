@@ -165,9 +165,12 @@ const Sidebar = ({ user }) => {
                                 onClick={() => setActiveLink(child.to)}
                                 className={`flex items-center relative pl-8 pr-3 py-2 rounded-lg transition-all duration-200 ${
                                   childActive
-                                    ? "font-bold bg-white text-gray-800"
-                                    : "text-white hover:bg-gray-600/50"
+                                    ? "font-bold bg-white"
+                                    : "hover:bg-gray-600/50"
                                 }`}
+                                style={{
+                                  color: childActive ? primaryColor : "white"
+                                }}
                               >
                                 <span className="absolute left-3 top-1/2 w-3 h-0.5 bg-white" />
                                 <img
