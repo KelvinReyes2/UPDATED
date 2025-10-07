@@ -58,6 +58,7 @@ const TripLogs = () => {
   const [err, setErr] = useState(null);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [userRole, setUserRole] = useState("User");
+  const [selectedTripCount, setSelectedTripCount] = useState("all"); // "all" or specific trip number
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -325,43 +326,51 @@ const TripLogs = () => {
     });
   };
 
-  // Get ALL filtered transactions (for dashboard totals)
-  const getAllFilteredTransactions = () => {
+  // Get ALL filtered transactions (for dashboard totals) with optional tripCount filter
+  const getAllFilteredTransactions = (tripCountFilter = "all") => {
     let filtered = filterTransactionsByDate(transactions);
     
     if (selectedRoute) {
       filtered = filtered.filter(transaction => transaction.route === selectedRoute);
     }
     
+    if (tripCountFilter !== "all") {
+      filtered = filtered.filter(transaction => transaction.tripCount === tripCountFilter);
+    }
+    
     return filtered;
   };
 
-  // Get ALL filtered voided transactions (for dashboard totals)
-  const getAllFilteredVoidedTransactions = () => {
+  // Get ALL filtered voided transactions (for dashboard totals) with optional tripCount filter
+  const getAllFilteredVoidedTransactions = (tripCountFilter = "all") => {
     let filtered = filterTransactionsByDate(voidedTransactions);
     
     if (selectedRoute) {
       filtered = filtered.filter(transaction => transaction.route === selectedRoute);
     }
     
+    if (tripCountFilter !== "all") {
+      filtered = filtered.filter(transaction => transaction.tripCount === tripCountFilter);
+    }
+    
     return filtered;
   };
 
-  // Get transactions for a specific driver
-  const getDriverTransactions = (driverUID) => {
-    const allFiltered = getAllFilteredTransactions();
+  // Get transactions for a specific driver with optional tripCount filter
+  const getDriverTransactions = (driverUID, tripCountFilter = "all") => {
+    const allFiltered = getAllFilteredTransactions(tripCountFilter);
     return allFiltered.filter(transaction => transaction.driverUID === driverUID);
   };
 
-  // Get voided transactions for a specific driver
-  const getDriverVoidedTransactions = (driverUID) => {
-    const allFilteredVoided = getAllFilteredVoidedTransactions();
+  // Get voided transactions for a specific driver with optional tripCount filter
+  const getDriverVoidedTransactions = (driverUID, tripCountFilter = "all") => {
+    const allFilteredVoided = getAllFilteredVoidedTransactions(tripCountFilter);
     return allFilteredVoided.filter(transaction => transaction.driverUID === driverUID);
   };
 
-  // Get total fare collected by a driver for a payment method
-  const getDriverFareByMethod = (driverUID, paymentMethod) => {
-    const driverTransactions = getDriverTransactions(driverUID);
+  // Get total fare collected by a driver for a payment method with optional tripCount filter
+  const getDriverFareByMethod = (driverUID, paymentMethod, tripCountFilter = "all") => {
+    const driverTransactions = getDriverTransactions(driverUID, tripCountFilter);
     return driverTransactions.reduce((total, transaction) => {
       if (transaction.paymentMethod === paymentMethod) {
         return total + (transaction.farePrice || 0);
@@ -370,9 +379,9 @@ const TripLogs = () => {
     }, 0);
   };
 
-  // Get total voided transactions for a driver
-  const getDriverVoidedTotal = (driverUID) => {
-    const driverVoidedTransactions = getDriverVoidedTransactions(driverUID);
+  // Get total voided transactions for a driver with optional tripCount filter
+  const getDriverVoidedTotal = (driverUID, tripCountFilter = "all") => {
+    const driverVoidedTransactions = getDriverVoidedTransactions(driverUID, tripCountFilter);
     return driverVoidedTransactions.reduce((total, transaction) => {
       return total + (transaction.farePrice || 0);
     }, 0);
@@ -380,11 +389,25 @@ const TripLogs = () => {
 
   // Get distinct trip count for a driver
   const getDriverTripCount = (driverUID) => {
-    const driverTransactions = getDriverTransactions(driverUID);
+    const driverTransactions = getDriverTransactions(driverUID, "all");
     const distinctTripCounts = [
       ...new Set(driverTransactions.map((t) => t.tripCount).filter(t => t !== undefined && t !== null)),
     ];
     return distinctTripCounts.length > 0 ? Math.max(...distinctTripCounts) : 0;
+  };
+
+  // Get max trip count from all filtered transactions
+  const getMaxTripCount = () => {
+    const allFiltered = getAllFilteredTransactions("all");
+    const tripCounts = allFiltered.map(t => t.tripCount).filter(t => t !== undefined && t !== null);
+    return tripCounts.length > 0 ? Math.max(...tripCounts) : 0;
+  };
+
+  // Get available trip counts (sorted)
+  const getAvailableTripCounts = () => {
+    const allFiltered = getAllFilteredTransactions("all");
+    const tripCounts = [...new Set(allFiltered.map(t => t.tripCount).filter(t => t !== undefined && t !== null))];
+    return tripCounts.sort((a, b) => a - b);
   };
 
   // Filter users who have transactions on their dispatched route and by driver search
@@ -410,7 +433,7 @@ const TripLogs = () => {
 
   // DASHBOARD TOTALS - Calculate from ALL filtered transactions (not per driver)
   const getTotalCashFareCollected = () => {
-    const allFiltered = getAllFilteredTransactions();
+    const allFiltered = getAllFilteredTransactions(selectedTripCount);
     return allFiltered.reduce((total, transaction) => {
       if (transaction.paymentMethod === "Cash") {
         return total + (transaction.farePrice || 0);
@@ -420,7 +443,7 @@ const TripLogs = () => {
   };
 
   const getTotalCardFareCollected = () => {
-    const allFiltered = getAllFilteredTransactions();
+    const allFiltered = getAllFilteredTransactions(selectedTripCount);
     return allFiltered.reduce((total, transaction) => {
       if (transaction.paymentMethod === "Card") {
         return total + (transaction.farePrice || 0);
@@ -430,14 +453,14 @@ const TripLogs = () => {
   };
 
   const getTotalVoidedFare = () => {
-    const allFilteredVoided = getAllFilteredVoidedTransactions();
+    const allFilteredVoided = getAllFilteredVoidedTransactions(selectedTripCount);
     return allFilteredVoided.reduce((total, transaction) => {
       return total + (transaction.farePrice || 0);
     }, 0);
   };
 
   const getTotalTripCount = () => {
-    const allFiltered = getAllFilteredTransactions();
+    const allFiltered = getAllFilteredTransactions(selectedTripCount);
     const driversTripCounts = {};
     
     allFiltered.forEach(transaction => {
@@ -466,7 +489,47 @@ const TripLogs = () => {
     setSelectedStartDate(getTodayDate());
     setSelectedEndDate("");
     setDriverSearch("");
+    setSelectedTripCount("all");
     setCurrentPage(1);
+  };
+
+  // Handle trip count navigation
+  const handlePrevTripCount = () => {
+    const availableTripCounts = getAvailableTripCounts();
+    
+    if (selectedTripCount === "all") {
+      // Go to last trip count
+      if (availableTripCounts.length > 0) {
+        setSelectedTripCount(availableTripCounts[availableTripCounts.length - 1]);
+      }
+    } else {
+      const currentIndex = availableTripCounts.indexOf(selectedTripCount);
+      if (currentIndex > 0) {
+        setSelectedTripCount(availableTripCounts[currentIndex - 1]);
+      } else {
+        // Go to "all"
+        setSelectedTripCount("all");
+      }
+    }
+  };
+
+  const handleNextTripCount = () => {
+    const availableTripCounts = getAvailableTripCounts();
+    
+    if (selectedTripCount === "all") {
+      // Go to first trip count
+      if (availableTripCounts.length > 0) {
+        setSelectedTripCount(availableTripCounts[0]);
+      }
+    } else {
+      const currentIndex = availableTripCounts.indexOf(selectedTripCount);
+      if (currentIndex < availableTripCounts.length - 1) {
+        setSelectedTripCount(availableTripCounts[currentIndex + 1]);
+      } else {
+        // Go back to "all"
+        setSelectedTripCount("all");
+      }
+    }
   };
 
   const filteredUsers = getFilteredUsers();
@@ -493,7 +556,7 @@ const TripLogs = () => {
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [selectedRoute, driverSearch, selectedStartDate, selectedEndDate]);
+  }, [selectedRoute, driverSearch, selectedStartDate, selectedEndDate, selectedTripCount]);
 
   // Export functions
   const handleExportCSV = async () => {
@@ -578,10 +641,10 @@ const TripLogs = () => {
     "Trip Count",
   ];
   const rows = filteredUsers.map((user) => {
-    const cashFare = getDriverFareByMethod(user.id, "Cash");
-    const cardFare = getDriverFareByMethod(user.id, "Card");
+    const cashFare = getDriverFareByMethod(user.id, "Cash", selectedTripCount);
+    const cardFare = getDriverFareByMethod(user.id, "Card", selectedTripCount);
     const totalFare = cashFare + cardFare;
-    const voidedTotal = getDriverVoidedTotal(user.id);
+    const voidedTotal = getDriverVoidedTotal(user.id, selectedTripCount);
     const tripCount = getDriverTripCount(user.id);
 
     return [
@@ -593,6 +656,9 @@ const TripLogs = () => {
       tripCount,
     ];
   });
+
+  const maxTripCount = getMaxTripCount();
+  const availableTripCounts = getAvailableTripCounts();
 
   if (loading) {
     return (
@@ -844,9 +910,9 @@ const TripLogs = () => {
               </div>
             </div>
 
-            {/* Total Trip Count */}
+            {/* Total Trip Count with Navigation */}
             <div className="bg-white rounded-lg shadow-md p-6 flex items-center justify-between">
-              <div className="flex items-center justify-center w-12 h-12 rounded-full mr-4 bg-indigo-100">
+              <div className="flex items-center justify-center w-12 h-12 rounded-full mr-4 bg-blue-100">
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
                   className="w-6 h-6 text-indigo-600"
@@ -862,10 +928,51 @@ const TripLogs = () => {
                   />
                 </svg>
               </div>
-              <div>
-                <p className="text-sm font-medium text-gray-600">
-                  Total Trip Count
-                </p>
+              <div className="flex-1">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium text-gray-600">
+                    Trip Count
+                  </p>
+                  {availableTripCounts.length > 0 && (
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={handlePrevTripCount}
+                        className="p-1 rounded hover:bg-gray-100 transition"
+                        title="Previous trip"
+                      >
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          className="h-4 w-4 text-gray-600"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                        >
+                          <path d="M15 18l-6-6 6-6" />
+                        </svg>
+                      </button>
+                      <span className="text-xs text-gray-500 min-w-[80px] text-center font-medium">
+                        {selectedTripCount === "all" ? "All Trips" : `Trip ${selectedTripCount}`}
+                      </span>
+                      <button
+                        onClick={handleNextTripCount}
+                        className="p-1 rounded hover:bg-gray-100 transition"
+                        title="Next trip"
+                      >
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          className="h-4 w-4 text-gray-600"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                        >
+                          <path d="M9 18l6-6-6-6" />
+                        </svg>
+                      </button>
+                    </div>
+                  )}
+                </div>
                 <p className="text-2xl font-bold text-gray-900">
                   {getTotalTripCount().toLocaleString()}
                 </p>
@@ -910,10 +1017,10 @@ const TripLogs = () => {
                   </tr>
                 ) : (
                   currentItems.map((user) => {
-                    const cashFare = getDriverFareByMethod(user.id, "Cash");
-                    const cardFare = getDriverFareByMethod(user.id, "Card");
+                    const cashFare = getDriverFareByMethod(user.id, "Cash", selectedTripCount);
+                    const cardFare = getDriverFareByMethod(user.id, "Card", selectedTripCount);
                     const totalFare = cashFare + cardFare;
-                    const voidedTotal = getDriverVoidedTotal(user.id);
+                    const voidedTotal = getDriverVoidedTotal(user.id, selectedTripCount);
                     const tripCount = getDriverTripCount(user.id);
 
                     return (
@@ -921,30 +1028,20 @@ const TripLogs = () => {
                         <td className="px-6 py-4 text-sm text-gray-900">
                           {user.displayName}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
-                            ₱ {totalFare.toFixed(2)}
-                          </span>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          ₱ {totalFare.toFixed(2)}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-50 text-green-700 border border-green-200">
-                            ₱ {cashFare.toFixed(2)}
-                          </span>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          ₱ {cashFare.toFixed(2)}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-50 text-blue-700 border border-blue-200">
-                            ₱ {cardFare.toFixed(2)}
-                          </span>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          ₱ {cardFare.toFixed(2)}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-red-100 text-red-800">
-                            ₱ {voidedTotal.toFixed(2)}
-                          </span>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          ₱ {voidedTotal.toFixed(2)}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-indigo-100 text-indigo-800">
-                            {tripCount}
-                          </span>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {tripCount}
                         </td>
                       </tr>
                     );
