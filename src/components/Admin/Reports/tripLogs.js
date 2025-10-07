@@ -59,7 +59,6 @@ const TripLogs = () => {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [userRole, setUserRole] = useState("User");
   const [selectedTripCount, setSelectedTripCount] = useState("all"); // "all" or specific trip number
-  
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(10);
@@ -119,6 +118,12 @@ const TripLogs = () => {
     }
   };
 
+  const getDriversFromTransactions = useCallback(() => {
+  const filtered = filterTransactionsByDate(transactions);
+  const driverUIDs = new Set(filtered.map(t => t.driverUID));
+  return driverUIDs;
+}, [transactions, selectedStartDate, selectedEndDate]);
+
   // Real-time listener for unit collection to get dispatched drivers with their routes
   const setupDispatchedDriversListener = useCallback(() => {
     try {
@@ -168,20 +173,33 @@ const TripLogs = () => {
 
   // Real-time users listener - filter by dispatched drivers
   const setupUsersListener = useCallback(() => {
-    try {
-      const usersRef = collection(db, "users");
-      const q = query(
-        usersRef,
-        where("role", "in", ["Driver", "Reliever"]),
-        where("status", "==", "Active")
-      );
+  try {
+    const usersRef = collection(db, "users");
+    const q = query(
+      usersRef,
+      where("role", "in", ["Driver", "Reliever"]),
+      where("status", "==", "Active")
+    );
 
-      const unsubscribe = onSnapshot(q, (querySnapshot) => {
-        const userData = [];
-        querySnapshot.forEach((doc) => {
-          const data = doc.data();
-          // Only add if driver is in the dispatched list
-          if (dispatchedDriversMap.has(doc.id)) {
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+      const userData = [];
+      const driversFromTransactions = getDriversFromTransactions();
+      
+      querySnapshot.forEach((doc) => {
+        const data = doc.data();
+        
+        // Check if date range is today only
+        const isToday = selectedStartDate === getTodayDate() && !selectedEndDate;
+        
+        // Include driver if:
+        // 1. Currently dispatched (for today's view), OR
+        // 2. Has transactions in the selected date range (for historical view)
+        const isDispatched = dispatchedDriversMap.has(doc.id);
+        const hasTransactions = driversFromTransactions.has(doc.id);
+        
+        if (isToday) {
+          // Only show currently dispatched drivers for today
+          if (isDispatched) {
             userData.push({
               id: doc.id,
               displayName: `${data.firstName || ""} ${data.lastName || ""}`.trim(),
@@ -190,21 +208,35 @@ const TripLogs = () => {
               dispatchedRoute: dispatchedDriversMap.get(doc.id),
             });
           }
-        });
-        setUsers(userData);
-        setLoading(false);
-      }, (error) => {
-        console.error("Error listening to users:", error);
-        setErr("Failed to load users");
-        setLoading(false);
+        } else {
+          // Show both dispatched and historical drivers with transactions
+          if (isDispatched || hasTransactions) {
+            userData.push({
+              id: doc.id,
+              displayName: `${data.firstName || ""} ${data.lastName || ""}`.trim(),
+              role: data.role,
+              status: data.status,
+              dispatchedRoute: dispatchedDriversMap.get(doc.id) || null,
+              isHistorical: !isDispatched && hasTransactions, // Mark as historical
+            });
+          }
+        }
       });
-
-      return unsubscribe;
-    } catch (error) {
-      console.error("Error setting up users listener:", error);
+      
+      setUsers(userData);
       setLoading(false);
-    }
-  }, [dispatchedDriversMap]);
+    }, (error) => {
+      console.error("Error listening to users:", error);
+      setErr("Failed to load users");
+      setLoading(false);
+    });
+
+    return unsubscribe;
+  } catch (error) {
+    console.error("Error setting up users listener:", error);
+    setLoading(false);
+  }
+}, [dispatchedDriversMap, selectedStartDate, selectedEndDate, getDriversFromTransactions]);
 
   // Real-time transactions listener (non-voided)
   const setupTransactionsListener = useCallback(() => {
@@ -394,13 +426,6 @@ const TripLogs = () => {
       ...new Set(driverTransactions.map((t) => t.tripCount).filter(t => t !== undefined && t !== null)),
     ];
     return distinctTripCounts.length > 0 ? Math.max(...distinctTripCounts) : 0;
-  };
-
-  // Get max trip count from all filtered transactions
-  const getMaxTripCount = () => {
-    const allFiltered = getAllFilteredTransactions("all");
-    const tripCounts = allFiltered.map(t => t.tripCount).filter(t => t !== undefined && t !== null);
-    return tripCounts.length > 0 ? Math.max(...tripCounts) : 0;
   };
 
   // Get available trip counts (sorted)
@@ -619,16 +644,16 @@ const TripLogs = () => {
 
   // Setup users listener when dispatched drivers are loaded
   useEffect(() => {
-    if (dispatchedDriversMap.size > 0) {
-      const unsubscribeUsers = setupUsersListener();
-      return () => {
-        if (unsubscribeUsers) unsubscribeUsers();
-      };
-    } else {
-      setUsers([]);
-      setLoading(false);
-    }
-  }, [dispatchedDriversMap, setupUsersListener]);
+  if (dispatchedDriversMap.size > 0 || transactions.length > 0) {
+    const unsubscribeUsers = setupUsersListener();
+    return () => {
+      if (unsubscribeUsers) unsubscribeUsers();
+    };
+  } else {
+    setUsers([]);
+    setLoading(false);
+  }
+}, [dispatchedDriversMap, setupUsersListener, selectedStartDate, selectedEndDate, transactions]);
 
   const toggleDropdown = () => setIsDropdownOpen(!isDropdownOpen);
 
@@ -657,7 +682,6 @@ const TripLogs = () => {
     ];
   });
 
-  const maxTripCount = getMaxTripCount();
   const availableTripCounts = getAvailableTripCounts();
 
   if (loading) {

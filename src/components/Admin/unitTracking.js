@@ -24,6 +24,7 @@ export default function UnitTracking() {
   const [driverLogs, setDriverLogs] = useState([]);
   const [selectedUnit, setSelectedUnit] = useState(null);
   const [showDetails, setShowDetails] = useState(false);
+  const [leafletLoaded, setLeafletLoaded] = useState(false);
   const mapRef = useRef(null);
   const leafletMap = useRef(null);
   const markersRef = useRef([]);
@@ -38,6 +39,33 @@ export default function UnitTracking() {
       checkDate.getFullYear() === today.getFullYear()
     );
   };
+
+  // Load Leaflet resources
+  useEffect(() => {
+    if (typeof window !== "undefined" && !window.L) {
+      // Load Leaflet CSS
+      const link = document.createElement("link");
+      link.rel = "stylesheet";
+      link.href =
+        "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css";
+      document.head.appendChild(link);
+
+      // Load Leaflet JS
+      const script = document.createElement("script");
+      script.src =
+        "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js";
+      script.async = true;
+      script.onload = () => {
+        setLeafletLoaded(true);
+      };
+      script.onerror = () => {
+        console.error("Failed to load Leaflet");
+      };
+      document.head.appendChild(script);
+    } else if (window.L) {
+      setLeafletLoaded(true);
+    }
+  }, []);
 
   // Fetch unit tracking data
   useEffect(() => {
@@ -251,49 +279,83 @@ export default function UnitTracking() {
     if (filteredUnits.length === 0) return;
 
     filteredUnits.forEach((unitTracking) => {
-      // Find the unit info from 'unit' collection
       const unitHolderId = unitTracking.unitHolder;
       const vehicleId = unitTracking.vehicleId || unitTracking.unitId;
 
-      // Get driver name
       const driverName = unitHolderId
         ? getDriverName(unitHolderId)
         : "No Driver Found";
 
-      // Get status info
       const statusInfo = getStatusInfo(unitTracking.status || "idle");
+      const statusLower = (unitTracking.status || "").toLowerCase();
 
-      // Determine icon color based on vehicle status
-      const iconColor =
-        (unitTracking.status || "").toLowerCase() === "active" ||
-        (unitTracking.status || "").toLowerCase() === "moving"
-          ? "#10b981"
-          : "#6b7280";
+      // Determine icon color and animation based on vehicle status
+      let iconColor, pulseAnimation, vehicleAnimation;
+      
+      if (statusLower === "active" || statusLower === "moving") {
+        iconColor = "#10b981"; // green
+        pulseAnimation = `<animate attributeName="opacity" values="1;0.3;1" dur="1s" repeatCount="indefinite"/>`;
+        vehicleAnimation = `<animateTransform attributeName="transform" type="translate" values="0,0; 2,0; 0,0; -2,0; 0,0" dur="2s" repeatCount="indefinite"/>`;
+      } else if (statusLower === "stop") {
+        iconColor = "#ef4444"; // red
+        pulseAnimation = `<animate attributeName="opacity" values="1;0.5;1" dur="1.5s" repeatCount="indefinite"/>`;
+        vehicleAnimation = ''; // No movement for stopped vehicles
+      } else {
+        iconColor = "#6b7280"; // gray (idle)
+        pulseAnimation = `<animate attributeName="opacity" values="0.7;0.3;0.7" dur="3s" repeatCount="indefinite"/>`;
+        vehicleAnimation = `<animateTransform attributeName="transform" type="scale" values="1;1.05;1" dur="4s" repeatCount="indefinite"/>`;
+      }
 
+      // Vehicle icon SVG with animations
       const customIcon = window.L.divIcon({
-        className: "custom-div-icon",
+        className: "custom-vehicle-icon",
         html: `
-      <div style="
-        background-color: ${iconColor};
-        width: 20px;
-        height: 20px;
-        border-radius: 50%;
-        border: 3px solid white;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-      ">
-        <div style="
-          background-color: white;
-          width: 8px;
-          height: 8px;
-          border-radius: 50%;
-        "></div>
-      </div>
-    `,
-        iconSize: [26, 26],
-        iconAnchor: [13, 13],
+          <div style="position: relative; width: 32px; height: 32px;">
+            <svg width="32" height="32" viewBox="0 0 32 32" style="filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3)); overflow: visible;">
+              <g>
+                ${vehicleAnimation}
+                <!-- Vehicle body -->
+                <rect x="8" y="14" width="16" height="10" rx="2" fill="${iconColor}" stroke="white" stroke-width="1.5"/>
+                <!-- Vehicle cabin -->
+                <rect x="10" y="10" width="12" height="6" rx="1.5" fill="${iconColor}" stroke="white" stroke-width="1.5"/>
+                <!-- Windows -->
+                <rect x="11" y="11" width="4" height="3" rx="0.5" fill="white" opacity="0.7"/>
+                <rect x="17" y="11" width="4" height="3" rx="0.5" fill="white" opacity="0.7"/>
+                <!-- Wheels -->
+                <circle cx="11" cy="24" r="2" fill="#333" stroke="white" stroke-width="1"/>
+                <circle cx="21" cy="24" r="2" fill="#333" stroke="white" stroke-width="1"/>
+                ${statusLower === "active" || statusLower === "moving" ? `
+                <!-- Motion lines for moving vehicles -->
+                <line x1="5" y1="16" x2="7" y2="16" stroke="${iconColor}" stroke-width="1.5" opacity="0.6">
+                  <animate attributeName="x1" values="5;3;5" dur="0.8s" repeatCount="indefinite"/>
+                  <animate attributeName="x2" values="7;5;7" dur="0.8s" repeatCount="indefinite"/>
+                </line>
+                <line x1="5" y1="19" x2="7" y2="19" stroke="${iconColor}" stroke-width="1.5" opacity="0.4">
+                  <animate attributeName="x1" values="5;3;5" dur="0.8s" begin="0.2s" repeatCount="indefinite"/>
+                  <animate attributeName="x2" values="7;5;7" dur="0.8s" begin="0.2s" repeatCount="indefinite"/>
+                </line>
+                <line x1="5" y1="22" x2="7" y2="22" stroke="${iconColor}" stroke-width="1.5" opacity="0.3">
+                  <animate attributeName="x1" values="5;3;5" dur="0.8s" begin="0.4s" repeatCount="indefinite"/>
+                  <animate attributeName="x2" values="7;5;7" dur="0.8s" begin="0.4s" repeatCount="indefinite"/>
+                </line>
+                ` : ''}
+              </g>
+              <!-- Status indicator with pulse -->
+              <circle cx="26" cy="10" r="3" fill="${iconColor}" stroke="white" stroke-width="1.5">
+                ${pulseAnimation}
+              </circle>
+              ${statusLower === "stop" ? `
+              <!-- Warning indicator for stopped vehicles -->
+              <circle cx="26" cy="10" r="5" fill="none" stroke="${iconColor}" stroke-width="1" opacity="0.5">
+                <animate attributeName="r" values="3;6;3" dur="2s" repeatCount="indefinite"/>
+                <animate attributeName="opacity" values="0.5;0;0.5" dur="2s" repeatCount="indefinite"/>
+              </circle>
+              ` : ''}
+            </svg>
+          </div>
+        `,
+        iconSize: [32, 32],
+        iconAnchor: [16, 16],
       });
 
       const marker = window.L.marker(
@@ -302,29 +364,29 @@ export default function UnitTracking() {
       )
         .bindPopup(
           `
-      <div style="min-width: 200px; font-family: system-ui;">
-        <div style="font-weight: bold; font-size: 16px; margin-bottom: 8px; color: #1f2937;">
-          ${vehicleId}
-        </div>
-        <div style="margin-bottom: 4px;">
-          <span style="font-weight: 500; color: #374151;">Route:</span> 
-          <span style="color: #6b7280;">${unitTracking.route}</span>
-        </div>
-        <div style="margin-bottom: 4px;">
-          <span style="font-weight: 500; color: #374151;">Driver:</span> 
-          <span style="color: #6b7280;">${driverName}</span>
-        </div>
-        <div style="margin-bottom: 4px;">
-          <span style="font-weight: 500; color: #374151;">Status:</span> 
-          <span style="color: ${statusInfo.textColor.replace("text-", "")}; font-weight: 500;">
-            ${statusInfo.text}
-          </span>
-        </div>
-        <div style="font-size: 12px; color: #9ca3af; margin-top: 8px;">
-          Updated: ${getTimeAgo(unitTracking.updatedAt)}
-        </div>
-      </div>
-    `
+          <div style="min-width: 200px; font-family: system-ui;">
+            <div style="font-weight: bold; font-size: 16px; margin-bottom: 8px; color: #1f2937;">
+              ${vehicleId}
+            </div>
+            <div style="margin-bottom: 4px;">
+              <span style="font-weight: 500; color: #374151;">Route:</span> 
+              <span style="color: #6b7280;">${unitTracking.route}</span>
+            </div>
+            <div style="margin-bottom: 4px;">
+              <span style="font-weight: 500; color: #374151;">Driver:</span> 
+              <span style="color: #6b7280;">${driverName}</span>
+            </div>
+            <div style="margin-bottom: 4px;">
+              <span style="font-weight: 500; color: #374151;">Status:</span> 
+              <span style="color: ${statusInfo.textColor.replace("text-", "")}; font-weight: 500;">
+                ${statusInfo.text}
+              </span>
+            </div>
+            <div style="font-size: 12px; color: #9ca3af; margin-top: 8px;">
+              Updated: ${getTimeAgo(unitTracking.updatedAt)}
+            </div>
+          </div>
+        `
         )
         .addTo(leafletMap.current);
 
@@ -343,7 +405,6 @@ export default function UnitTracking() {
     mergedDataTracking,
     selectedRoute,
     searchTerm,
-    unitsData,
     getDriverName,
     getStatusInfo,
     getTimeAgo,
@@ -352,52 +413,36 @@ export default function UnitTracking() {
 
   // Initialize Leaflet map
   useEffect(() => {
-    if (
-      typeof window !== "undefined" &&
-      mapRef.current &&
-      !leafletMap.current
-    ) {
-      // Load Leaflet CSS and JS
-      const link = document.createElement("link");
-      link.rel = "stylesheet";
-      link.href =
-        "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css";
-      document.head.appendChild(link);
+    if (leafletLoaded && mapRef.current && !leafletMap.current && window.L) {
+      try {
+        leafletMap.current = window.L.map(mapRef.current).setView(
+          [13.2905, 121.1267],
+          10
+        );
 
-      const script = document.createElement("script");
-      script.src =
-        "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js";
-      script.onload = () => {
-        if (window.L && mapRef.current) {
-          leafletMap.current = window.L.map(mapRef.current).setView(
-            [13.2905, 121.1267],
-            10
-          );
+        window.L.tileLayer(
+          "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
+          {
+            attribution:
+              '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+            subdomains: "abcd",
+            maxZoom: 20,
+          }
+        ).addTo(leafletMap.current);
 
-          // Add tile layer with a better looking map
-          window.L.tileLayer(
-            "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
-            {
-              attribution:
-                '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-              subdomains: "abcd",
-              maxZoom: 20,
-            }
-          ).addTo(leafletMap.current);
-
-          updateMapMarkers();
-        }
-      };
-      document.head.appendChild(script);
+        updateMapMarkers();
+      } catch (error) {
+        console.error("Error initializing map:", error);
+      }
     }
-  }, [updateMapMarkers]);
+  }, [leafletLoaded, updateMapMarkers]);
 
   // Update markers when data changes
   useEffect(() => {
-    if (leafletMap.current) {
+    if (leafletMap.current && leafletLoaded) {
       updateMapMarkers();
     }
-  }, [updateMapMarkers]);
+  }, [updateMapMarkers, leafletLoaded]);
 
   // Focus on selected unit
   useEffect(() => {
@@ -407,17 +452,15 @@ export default function UnitTracking() {
         15
       );
     } else if (!selectedUnit && leafletMap.current) {
-      updateMapMarkers(); // Refocus on all units
+      updateMapMarkers();
     }
   }, [selectedUnit, updateMapMarkers]);
 
   // Handle unit selection - toggle selection
   const handleUnitSelection = (unit) => {
     if (selectedUnit && selectedUnit.id === unit.id) {
-      // If clicking the same unit, deselect it
       setSelectedUnit(null);
     } else {
-      // If clicking a different unit, select it
       setSelectedUnit(unit);
     }
   };
@@ -625,9 +668,17 @@ export default function UnitTracking() {
             className="w-full h-full rounded-lg leaflet-container"
             style={{ minHeight: "400px", zIndex: 0 }}
           />
+          {!leafletLoaded && (
+            <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
+              <div className="text-center">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-4 mx-auto mb-4 border-blue-600"></div>
+                <p className="text-gray-600">Loading map...</p>
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Quick Info Bar - Always visible with enhanced styling */}
+        {/* Quick Info Bar */}
         {filteredUnits.length > 0 && (
           <div className="bg-white border-t border-gray-200 p-6 shadow-lg">
             <div className="grid grid-cols-3 gap-6">
