@@ -311,84 +311,130 @@ export default function UnitTracking() {
       const iconSize = 48;
       
       // Vehicle icon SVG with animations - bigger and more appealing
-      const customIcon = window.L.divIcon({
-        className: "custom-vehicle-icon",
-        html: `
-          <div style="position: relative; width: ${iconSize}px; height: ${iconSize}px;">
-            <svg width="${iconSize}" height="${iconSize}" viewBox="0 0 48 48" style="filter: drop-shadow(0 4px 8px rgba(0,0,0,0.4)); overflow: visible;">
-              <defs>
-                <linearGradient id="vehicleGrad-${unitTracking.id}" x1="0%" y1="0%" x2="0%" y2="100%">
-                  <stop offset="0%" style="stop-color:${iconColor};stop-opacity:1" />
-                  <stop offset="100%" style="stop-color:${iconColor};stop-opacity:0.7" />
-                </linearGradient>
-                <filter id="shadow-${unitTracking.id}">
-                  <feDropShadow dx="0" dy="2" stdDeviation="2" flood-opacity="0.3"/>
-                </filter>
-              </defs>
+     const customIcon = window.L.divIcon({
+      className: "custom-vehicle-icon",
+      html: `
+        <div style="position: relative; width: ${iconSize}px; height: ${iconSize}px;">
+          <svg width="${iconSize}" height="${iconSize}" viewBox="0 0 48 48" style="overflow: visible;">
+            <defs>
+              <linearGradient id="vehicleGrad-${unitTracking.id}" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" style="stop-color:${iconColor};stop-opacity:1" />
+                <stop offset="100%" style="stop-color:${iconColor};stop-opacity:0.7" />
+              </linearGradient>
+              <linearGradient id="highlightGrad-${unitTracking.id}" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" style="stop-color:rgba(255,255,255,0.3);stop-opacity:1" />
+                <stop offset="100%" style="stop-color:rgba(255,255,255,0.1);stop-opacity:0.5" />
+              </linearGradient>
+              <filter id="shadow-${unitTracking.id}" x="-50%" y="-50%" width="200%" height="200%">
+                <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="rgba(0,0,0,0.4)" flood-opacity="0.6"/>
+              </filter>
+              <filter id="glow-${unitTracking.id}">
+                <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+                <feMerge> 
+                  <feMergeNode in="coloredBlur"/>
+                  <feMergeNode in="SourceGraphic"/>
+                </feMerge>
+              </filter>
+            </defs>
+            
+            ${isSelected ? `
+            <!-- Selection shadow -->
+            <g transform="translate(2, 4)" opacity="0.6">
               <g filter="url(#shadow-${unitTracking.id})">
-                ${vehicleAnimation}
-                <!-- Vehicle body - larger and more detailed -->
-                <rect x="10" y="20" width="28" height="16" rx="3" fill="url(#vehicleGrad-${unitTracking.id})" stroke="white" stroke-width="2"/>
-                <!-- Vehicle cabin -->
-                <rect x="13" y="14" width="22" height="10" rx="2.5" fill="url(#vehicleGrad-${unitTracking.id})" stroke="white" stroke-width="2"/>
-                <!-- Front windshield -->
-                <path d="M 13 19 L 15 15 L 21 15 L 21 19 Z" fill="rgba(255,255,255,0.5)" stroke="white" stroke-width="1"/>
-                <!-- Back windshield -->
-                <path d="M 27 15 L 33 15 L 35 19 L 27 19 Z" fill="rgba(255,255,255,0.5)" stroke="white" stroke-width="1"/>
-                <!-- Wheels with details -->
-                <g>
-                  <circle cx="16" cy="36" r="3.5" fill="#2d3748" stroke="white" stroke-width="1.5"/>
-                  <circle cx="16" cy="36" r="2" fill="#4a5568"/>
-                  <circle cx="32" cy="36" r="3.5" fill="#2d3748" stroke="white" stroke-width="1.5"/>
-                  <circle cx="32" cy="36" r="2" fill="#4a5568"/>
-                </g>
-                <!-- Headlights -->
-                <circle cx="12" cy="22" r="1.5" fill="white" opacity="0.9">
-                  ${statusLower === "active" || statusLower === "moving" ? '<animate attributeName="opacity" values="0.9;0.4;0.9" dur="1s" repeatCount="indefinite"/>' : ''}
-                </circle>
-                <circle cx="12" cy="28" r="1.5" fill="white" opacity="0.9">
-                  ${statusLower === "active" || statusLower === "moving" ? '<animate attributeName="opacity" values="0.9;0.4;0.9" dur="1s" repeatCount="indefinite"/>' : ''}
-                </circle>
-                ${statusLower === "active" || statusLower === "moving" ? `
-                <!-- Motion lines for moving vehicles - enhanced -->
-                <line x1="6" y1="22" x2="9" y2="22" stroke="${iconColor}" stroke-width="2" opacity="0.7" stroke-linecap="round">
-                  <animate attributeName="x1" values="6;3;6" dur="0.6s" repeatCount="indefinite"/>
-                  <animate attributeName="x2" values="9;6;9" dur="0.6s" repeatCount="indefinite"/>
-                </line>
-                <line x1="6" y1="27" x2="9" y2="27" stroke="${iconColor}" stroke-width="2" opacity="0.5" stroke-linecap="round">
-                  <animate attributeName="x1" values="6;3;6" dur="0.6s" begin="0.15s" repeatCount="indefinite"/>
-                  <animate attributeName="x2" values="9;6;9" dur="0.6s" begin="0.15s" repeatCount="indefinite"/>
-                </line>
-                <line x1="6" y1="32" x2="9" y2="32" stroke="${iconColor}" stroke-width="2" opacity="0.4" stroke-linecap="round">
-                  <animate attributeName="x1" values="6;3;6" dur="0.6s" begin="0.3s" repeatCount="indefinite"/>
-                  <animate attributeName="x2" values="9;6;9" dur="0.6s" begin="0.3s" repeatCount="indefinite"/>
-                </line>
-                ` : ''}
+                <!-- Shadow vehicle body -->
+                <rect x="10" y="20" width="28" height="16" rx="4" fill="rgba(0,0,0,0.3)" stroke="rgba(0,0,0,0.2)" stroke-width="1.5"/>
+                <!-- Shadow vehicle cabin -->
+                <rect x="13" y="14" width="22" height="10" rx="3" fill="rgba(0,0,0,0.3)" stroke="rgba(0,0,0,0.2)" stroke-width="1.5"/>
+                <!-- Shadow wheels -->
+                <circle cx="16" cy="36" r="3.5" fill="rgba(0,0,0,0.4)"/>
+                <circle cx="32" cy="36" r="3.5" fill="rgba(0,0,0,0.4)"/>
               </g>
-              <!-- Status indicator with enhanced pulse -->
-              <circle cx="40" cy="12" r="5" fill="${iconColor}" stroke="white" stroke-width="2">
+            </g>
+            ` : ''}
+
+            <!-- Main vehicle -->
+            <g filter="url(#shadow-${unitTracking.id})" ${isSelected ? 'filter="url(#glow-' + unitTracking.id + ')"' : ''}>
+              ${vehicleAnimation}
+              
+              <!-- Enhanced vehicle body with 3D effect -->
+              <rect x="10" y="20" width="28" height="16" rx="4" fill="url(#vehicleGrad-${unitTracking.id})" stroke="white" stroke-width="2"/>
+              <rect x="11" y="21" width="26" height="14" rx="3" fill="none" stroke="rgba(255,255,255,0.3)" stroke-width="1"/>
+              
+              <!-- Vehicle cabin with highlights -->
+              <rect x="13" y="14" width="22" height="10" rx="3" fill="url(#vehicleGrad-${unitTracking.id})" stroke="white" stroke-width="2"/>
+              <rect x="14" y="15" width="20" height="8" rx="2" fill="none" stroke="rgba(255,255,255,0.3)" stroke-width="1"/>
+              
+              <!-- Windshields with gradient -->
+              <path d="M 13 19 L 15 15 L 21 15 L 21 19 Z" fill="rgba(173,216,230,0.6)" stroke="rgba(255,255,255,0.8)" stroke-width="1"/>
+              <path d="M 27 15 L 33 15 L 35 19 L 27 19 Z" fill="rgba(173,216,230,0.6)" stroke="rgba(255,255,255,0.8)" stroke-width="1"/>
+              
+              <!-- Enhanced wheels with hubcaps -->
+              <g>
+                <!-- Front wheel -->
+                <circle cx="16" cy="36" r="4" fill="#1a202c" stroke="white" stroke-width="1.5"/>
+                <circle cx="16" cy="36" r="2.5" fill="#2d3748"/>
+                <circle cx="16" cy="36" r="1.2" fill="rgba(255,255,255,0.8)"/>
+                
+                <!-- Back wheel -->
+                <circle cx="32" cy="36" r="4" fill="#1a202c" stroke="white" stroke-width="1.5"/>
+                <circle cx="32" cy="36" r="2.5" fill="#2d3748"/>
+                <circle cx="32" cy="36" r="1.2" fill="rgba(255,255,255,0.8)"/>
+              </g>
+              
+              <!-- Headlights with enhanced animation -->
+              <g>
+                <circle cx="12" cy="22" r="1.8" fill="#fef3c7" stroke="rgba(255,255,255,0.8)" stroke-width="0.5">
+                  ${statusLower === "active" || statusLower === "moving" ? 
+                    '<animate attributeName="fill" values="#fef3c7;#f59e0b;#fef3c7" dur="1.2s" repeatCount="indefinite"/>' : ''}
+                </circle>
+                <circle cx="12" cy="28" r="1.8" fill="#fef3c7" stroke="rgba(255,255,255,0.8)" stroke-width="0.5">
+                  ${statusLower === "active" || statusLower === "moving" ? 
+                    '<animate attributeName="fill" values="#fef3c7;#f59e0b;#fef3c7" dur="1.2s" repeatCount="indefinite"/>' : ''}
+                </circle>
+              </g>
+              
+              ${statusLower === "active" || statusLower === "moving" ? `
+              <!-- Enhanced motion lines -->
+              <g opacity="0.8">
+                <line x1="4" y1="20" x2="8" y2="20" stroke="${iconColor}" stroke-width="2.5" stroke-linecap="round">
+                  <animate attributeName="x1" values="4;2;4" dur="0.5s" repeatCount="indefinite"/>
+                  <animate attributeName="x2" values="8;6;8" dur="0.5s" repeatCount="indefinite"/>
+                </line>
+                <line x1="4" y1="25" x2="8" y2="25" stroke="${iconColor}" stroke-width="2" stroke-linecap="round">
+                  <animate attributeName="x1" values="4;2;4" dur="0.5s" begin="0.1s" repeatCount="indefinite"/>
+                  <animate attributeName="x2" values="8;6;8" dur="0.5s" begin="0.1s" repeatCount="indefinite"/>
+                </line>
+                <line x1="4" y1="30" x2="8" y2="30" stroke="${iconColor}" stroke-width="1.5" stroke-linecap="round">
+                  <animate attributeName="x1" values="4;2;4" dur="0.5s" begin="0.2s" repeatCount="indefinite"/>
+                  <animate attributeName="x2" values="8;6;8" dur="0.5s" begin="0.2s" repeatCount="indefinite"/>
+                </line>
+              </g>
+              ` : ''}
+            </g>
+
+            <!-- Status indicator with enhanced design -->
+            <g transform="translate(40, 12)">
+              <circle r="6" fill="white" stroke="white" stroke-width="3"/>
+              <circle r="4.5" fill="${iconColor}" stroke="white" stroke-width="1.5">
                 ${pulseAnimation}
               </circle>
               ${statusLower === "stop" ? `
-              <!-- Warning indicator for stopped vehicles -->
-              <circle cx="40" cy="12" r="5" fill="none" stroke="${iconColor}" stroke-width="1.5" opacity="0.6">
-                <animate attributeName="r" values="5;9;5" dur="2s" repeatCount="indefinite"/>
-                <animate attributeName="opacity" values="0.6;0;0.6" dur="2s" repeatCount="indefinite"/>
+              <!-- Pulsing warning ring -->
+              <circle r="4.5" fill="none" stroke="${iconColor}" stroke-width="1.5" opacity="0.7">
+                <animate attributeName="r" values="4.5;8;4.5" dur="1.8s" repeatCount="indefinite"/>
+                <animate attributeName="opacity" values="0.7;0;0.7" dur="1.8s" repeatCount="indefinite"/>
               </circle>
               ` : ''}
-              ${isSelected ? `
-              <!-- Selection ring -->
-              <circle cx="24" cy="24" r="22" fill="none" stroke="#3b82f6" stroke-width="3" opacity="0.8">
-                <animate attributeName="r" values="22;24;22" dur="1.5s" repeatCount="indefinite"/>
-                <animate attributeName="opacity" values="0.8;0.4;0.8" dur="1.5s" repeatCount="indefinite"/>
-              </circle>
-              ` : ''}
-            </svg>
-          </div>
-        `,
-        iconSize: [iconSize, iconSize],
-        iconAnchor: [iconSize / 2, iconSize / 2],
-      });
+            </g>
+
+            <!-- Vehicle highlight effect -->
+            <rect x="13" y="15" width="20" height="8" rx="2" fill="url(#highlightGrad-${unitTracking.id})"/>
+          </svg>
+        </div>
+      `,
+      iconSize: [iconSize, iconSize],
+      iconAnchor: [iconSize / 2, iconSize / 2],
+    });
 
       const marker = window.L.marker(
         [unitTracking.latitude, unitTracking.longitude],
