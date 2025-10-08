@@ -281,6 +281,7 @@ export default function UnitTracking() {
     filteredUnits.forEach((unitTracking) => {
       const unitHolderId = unitTracking.unitHolder;
       const vehicleId = unitTracking.vehicleId || unitTracking.unitId;
+      const isSelected = selectedUnit && selectedUnit.id === unitTracking.id;
 
       const driverName = unitHolderId
         ? getDriverName(unitHolderId)
@@ -295,7 +296,7 @@ export default function UnitTracking() {
       if (statusLower === "active" || statusLower === "moving") {
         iconColor = "#10b981"; // green
         pulseAnimation = `<animate attributeName="opacity" values="1;0.3;1" dur="1s" repeatCount="indefinite"/>`;
-        vehicleAnimation = `<animateTransform attributeName="transform" type="translate" values="0,0; 2,0; 0,0; -2,0; 0,0" dur="2s" repeatCount="indefinite"/>`;
+        vehicleAnimation = `<animateTransform attributeName="transform" type="translate" values="0,0; 3,0; 0,0; -3,0; 0,0" dur="2s" repeatCount="indefinite"/>`;
       } else if (statusLower === "stop") {
         iconColor = "#ef4444"; // red
         pulseAnimation = `<animate attributeName="opacity" values="1;0.5;1" dur="1.5s" repeatCount="indefinite"/>`;
@@ -306,56 +307,87 @@ export default function UnitTracking() {
         vehicleAnimation = `<animateTransform attributeName="transform" type="scale" values="1;1.05;1" dur="4s" repeatCount="indefinite"/>`;
       }
 
-      // Vehicle icon SVG with animations
+      // Larger icon size - 48x48
+      const iconSize = 48;
+      
+      // Vehicle icon SVG with animations - bigger and more appealing
       const customIcon = window.L.divIcon({
         className: "custom-vehicle-icon",
         html: `
-          <div style="position: relative; width: 32px; height: 32px;">
-            <svg width="32" height="32" viewBox="0 0 32 32" style="filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3)); overflow: visible;">
-              <g>
+          <div style="position: relative; width: ${iconSize}px; height: ${iconSize}px;">
+            <svg width="${iconSize}" height="${iconSize}" viewBox="0 0 48 48" style="filter: drop-shadow(0 4px 8px rgba(0,0,0,0.4)); overflow: visible;">
+              <defs>
+                <linearGradient id="vehicleGrad-${unitTracking.id}" x1="0%" y1="0%" x2="0%" y2="100%">
+                  <stop offset="0%" style="stop-color:${iconColor};stop-opacity:1" />
+                  <stop offset="100%" style="stop-color:${iconColor};stop-opacity:0.7" />
+                </linearGradient>
+                <filter id="shadow-${unitTracking.id}">
+                  <feDropShadow dx="0" dy="2" stdDeviation="2" flood-opacity="0.3"/>
+                </filter>
+              </defs>
+              <g filter="url(#shadow-${unitTracking.id})">
                 ${vehicleAnimation}
-                <!-- Vehicle body -->
-                <rect x="8" y="14" width="16" height="10" rx="2" fill="${iconColor}" stroke="white" stroke-width="1.5"/>
+                <!-- Vehicle body - larger and more detailed -->
+                <rect x="10" y="20" width="28" height="16" rx="3" fill="url(#vehicleGrad-${unitTracking.id})" stroke="white" stroke-width="2"/>
                 <!-- Vehicle cabin -->
-                <rect x="10" y="10" width="12" height="6" rx="1.5" fill="${iconColor}" stroke="white" stroke-width="1.5"/>
-                <!-- Windows -->
-                <rect x="11" y="11" width="4" height="3" rx="0.5" fill="white" opacity="0.7"/>
-                <rect x="17" y="11" width="4" height="3" rx="0.5" fill="white" opacity="0.7"/>
-                <!-- Wheels -->
-                <circle cx="11" cy="24" r="2" fill="#333" stroke="white" stroke-width="1"/>
-                <circle cx="21" cy="24" r="2" fill="#333" stroke="white" stroke-width="1"/>
+                <rect x="13" y="14" width="22" height="10" rx="2.5" fill="url(#vehicleGrad-${unitTracking.id})" stroke="white" stroke-width="2"/>
+                <!-- Front windshield -->
+                <path d="M 13 19 L 15 15 L 21 15 L 21 19 Z" fill="rgba(255,255,255,0.5)" stroke="white" stroke-width="1"/>
+                <!-- Back windshield -->
+                <path d="M 27 15 L 33 15 L 35 19 L 27 19 Z" fill="rgba(255,255,255,0.5)" stroke="white" stroke-width="1"/>
+                <!-- Wheels with details -->
+                <g>
+                  <circle cx="16" cy="36" r="3.5" fill="#2d3748" stroke="white" stroke-width="1.5"/>
+                  <circle cx="16" cy="36" r="2" fill="#4a5568"/>
+                  <circle cx="32" cy="36" r="3.5" fill="#2d3748" stroke="white" stroke-width="1.5"/>
+                  <circle cx="32" cy="36" r="2" fill="#4a5568"/>
+                </g>
+                <!-- Headlights -->
+                <circle cx="12" cy="22" r="1.5" fill="white" opacity="0.9">
+                  ${statusLower === "active" || statusLower === "moving" ? '<animate attributeName="opacity" values="0.9;0.4;0.9" dur="1s" repeatCount="indefinite"/>' : ''}
+                </circle>
+                <circle cx="12" cy="28" r="1.5" fill="white" opacity="0.9">
+                  ${statusLower === "active" || statusLower === "moving" ? '<animate attributeName="opacity" values="0.9;0.4;0.9" dur="1s" repeatCount="indefinite"/>' : ''}
+                </circle>
                 ${statusLower === "active" || statusLower === "moving" ? `
-                <!-- Motion lines for moving vehicles -->
-                <line x1="5" y1="16" x2="7" y2="16" stroke="${iconColor}" stroke-width="1.5" opacity="0.6">
-                  <animate attributeName="x1" values="5;3;5" dur="0.8s" repeatCount="indefinite"/>
-                  <animate attributeName="x2" values="7;5;7" dur="0.8s" repeatCount="indefinite"/>
+                <!-- Motion lines for moving vehicles - enhanced -->
+                <line x1="6" y1="22" x2="9" y2="22" stroke="${iconColor}" stroke-width="2" opacity="0.7" stroke-linecap="round">
+                  <animate attributeName="x1" values="6;3;6" dur="0.6s" repeatCount="indefinite"/>
+                  <animate attributeName="x2" values="9;6;9" dur="0.6s" repeatCount="indefinite"/>
                 </line>
-                <line x1="5" y1="19" x2="7" y2="19" stroke="${iconColor}" stroke-width="1.5" opacity="0.4">
-                  <animate attributeName="x1" values="5;3;5" dur="0.8s" begin="0.2s" repeatCount="indefinite"/>
-                  <animate attributeName="x2" values="7;5;7" dur="0.8s" begin="0.2s" repeatCount="indefinite"/>
+                <line x1="6" y1="27" x2="9" y2="27" stroke="${iconColor}" stroke-width="2" opacity="0.5" stroke-linecap="round">
+                  <animate attributeName="x1" values="6;3;6" dur="0.6s" begin="0.15s" repeatCount="indefinite"/>
+                  <animate attributeName="x2" values="9;6;9" dur="0.6s" begin="0.15s" repeatCount="indefinite"/>
                 </line>
-                <line x1="5" y1="22" x2="7" y2="22" stroke="${iconColor}" stroke-width="1.5" opacity="0.3">
-                  <animate attributeName="x1" values="5;3;5" dur="0.8s" begin="0.4s" repeatCount="indefinite"/>
-                  <animate attributeName="x2" values="7;5;7" dur="0.8s" begin="0.4s" repeatCount="indefinite"/>
+                <line x1="6" y1="32" x2="9" y2="32" stroke="${iconColor}" stroke-width="2" opacity="0.4" stroke-linecap="round">
+                  <animate attributeName="x1" values="6;3;6" dur="0.6s" begin="0.3s" repeatCount="indefinite"/>
+                  <animate attributeName="x2" values="9;6;9" dur="0.6s" begin="0.3s" repeatCount="indefinite"/>
                 </line>
                 ` : ''}
               </g>
-              <!-- Status indicator with pulse -->
-              <circle cx="26" cy="10" r="3" fill="${iconColor}" stroke="white" stroke-width="1.5">
+              <!-- Status indicator with enhanced pulse -->
+              <circle cx="40" cy="12" r="5" fill="${iconColor}" stroke="white" stroke-width="2">
                 ${pulseAnimation}
               </circle>
               ${statusLower === "stop" ? `
               <!-- Warning indicator for stopped vehicles -->
-              <circle cx="26" cy="10" r="5" fill="none" stroke="${iconColor}" stroke-width="1" opacity="0.5">
-                <animate attributeName="r" values="3;6;3" dur="2s" repeatCount="indefinite"/>
-                <animate attributeName="opacity" values="0.5;0;0.5" dur="2s" repeatCount="indefinite"/>
+              <circle cx="40" cy="12" r="5" fill="none" stroke="${iconColor}" stroke-width="1.5" opacity="0.6">
+                <animate attributeName="r" values="5;9;5" dur="2s" repeatCount="indefinite"/>
+                <animate attributeName="opacity" values="0.6;0;0.6" dur="2s" repeatCount="indefinite"/>
+              </circle>
+              ` : ''}
+              ${isSelected ? `
+              <!-- Selection ring -->
+              <circle cx="24" cy="24" r="22" fill="none" stroke="#3b82f6" stroke-width="3" opacity="0.8">
+                <animate attributeName="r" values="22;24;22" dur="1.5s" repeatCount="indefinite"/>
+                <animate attributeName="opacity" values="0.8;0.4;0.8" dur="1.5s" repeatCount="indefinite"/>
               </circle>
               ` : ''}
             </svg>
           </div>
         `,
-        iconSize: [32, 32],
-        iconAnchor: [16, 16],
+        iconSize: [iconSize, iconSize],
+        iconAnchor: [iconSize / 2, iconSize / 2],
       });
 
       const marker = window.L.marker(
@@ -364,25 +396,25 @@ export default function UnitTracking() {
       )
         .bindPopup(
           `
-          <div style="min-width: 200px; font-family: system-ui;">
-            <div style="font-weight: bold; font-size: 16px; margin-bottom: 8px; color: #1f2937;">
+          <div style="min-width: 220px; font-family: system-ui;">
+            <div style="font-weight: bold; font-size: 18px; margin-bottom: 10px; color: #1f2937;">
               ${vehicleId}
             </div>
-            <div style="margin-bottom: 4px;">
-              <span style="font-weight: 500; color: #374151;">Route:</span> 
+            <div style="margin-bottom: 6px;">
+              <span style="font-weight: 600; color: #374151;">Route:</span> 
               <span style="color: #6b7280;">${unitTracking.route}</span>
             </div>
-            <div style="margin-bottom: 4px;">
-              <span style="font-weight: 500; color: #374151;">Driver:</span> 
+            <div style="margin-bottom: 6px;">
+              <span style="font-weight: 600; color: #374151;">Driver:</span> 
               <span style="color: #6b7280;">${driverName}</span>
             </div>
-            <div style="margin-bottom: 4px;">
-              <span style="font-weight: 500; color: #374151;">Status:</span> 
-              <span style="color: ${statusInfo.textColor.replace("text-", "")}; font-weight: 500;">
+            <div style="margin-bottom: 6px;">
+              <span style="font-weight: 600; color: #374151;">Status:</span> 
+              <span style="color: ${statusInfo.textColor.replace("text-", "")}; font-weight: 600;">
                 ${statusInfo.text}
               </span>
             </div>
-            <div style="font-size: 12px; color: #9ca3af; margin-top: 8px;">
+            <div style="font-size: 13px; color: #9ca3af; margin-top: 10px;">
               Updated: ${getTimeAgo(unitTracking.updatedAt)}
             </div>
           </div>
@@ -397,9 +429,10 @@ export default function UnitTracking() {
       markersRef.current.push(marker);
     });
 
+    // Fit bounds only when no unit is selected
     if (!selectedUnit && filteredUnits.length > 0) {
       const group = new window.L.featureGroup(markersRef.current);
-      leafletMap.current.fitBounds(group.getBounds().pad(0.1));
+      leafletMap.current.fitBounds(group.getBounds().pad(10));
     }
   }, [
     mergedDataTracking,
@@ -426,7 +459,7 @@ export default function UnitTracking() {
             attribution:
               '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
             subdomains: "abcd",
-            maxZoom: 20,
+            maxZoom: 15,
           }
         ).addTo(leafletMap.current);
 
@@ -444,17 +477,20 @@ export default function UnitTracking() {
     }
   }, [updateMapMarkers, leafletLoaded]);
 
-  // Focus on selected unit
+  // Focus on selected unit - zoom in when selected
   useEffect(() => {
     if (selectedUnit && leafletMap.current) {
       leafletMap.current.setView(
         [selectedUnit.latitude, selectedUnit.longitude],
-        15
+        13,
+        { animate: true, duration: 0.5 }
       );
-    } else if (!selectedUnit && leafletMap.current) {
-      updateMapMarkers();
+    } else if (!selectedUnit && leafletMap.current && markersRef.current.length > 0) {
+      // Zoom out to fit all markers when deselecting
+      const group = new window.L.featureGroup(markersRef.current);
+      leafletMap.current.fitBounds(group.getBounds().pad(10), { animate: true, duration: 0.5 });
     }
-  }, [selectedUnit, updateMapMarkers]);
+  }, [selectedUnit]);
 
   // Handle unit selection - toggle selection
   const handleUnitSelection = (unit) => {
@@ -562,7 +598,7 @@ export default function UnitTracking() {
                   onClick={() => handleUnitSelection(unit)}
                   className={`m-2 p-4 rounded-xl cursor-pointer transition-all duration-300 ${
                     isSelected
-                      ? "bg-gradient-to-r from-blue-100 to-indigo-100 border-2 border-blue-300 shadow-lg transform scale-[1.02]"
+                      ? "bg-gradient-to-r from-blue-100 to-indigo-100 border-2 border-blue-400 shadow-lg"
                       : "bg-white hover:bg-gradient-to-r hover:from-gray-50 hover:to-blue-50 border border-gray-200 hover:border-blue-300 hover:shadow-lg hover:transform hover:scale-[1.01]"
                   }`}
                 >
