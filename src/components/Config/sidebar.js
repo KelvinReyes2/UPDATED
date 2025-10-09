@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { getAuth, signOut } from "firebase/auth";
 import { navLinks } from "../Config/navLinks";
-import LogoM from "../../images/logoM.png";
+import LogoM from "../../images/withoutText.png";
 import IconLogout from "../../images/logout.svg";
 
 const auth = getAuth();

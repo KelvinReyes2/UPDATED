@@ -18,7 +18,7 @@ import { auth, db } from "../firebase";
 import { KeyRound, Eye, EyeOff } from "lucide-react";
 
 // import images
-import MainLogo from "../images/MainLogo.png";
+import MainLogo from "../images/withText.png";
 import SideLogo from "../images/SideLogo.png";
 import server from "../images/serverMaintenance.png";
 import { motion } from "framer-motion";
@@ -571,7 +571,7 @@ function Login() {
       {/* Left: Login Form */}
       <div className="w-full md:w-1/2 flex flex-col justify-center items-center px-6 py-8 animate-slideIn">
         <div className="flex flex-col items-center space-y-3">
-          <img src={MainLogo} className="w-72 animate-fadeInUp" alt="Logo" />
+          <img src={MainLogo} className="w-80 animate-fadeInUp" alt="Logo" />
           <h2 className="text-4xl font-bold tracking-tight animate-fadeInUp delay-100">
             Welcome Back!
           </h2>
