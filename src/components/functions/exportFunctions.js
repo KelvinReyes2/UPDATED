@@ -3,7 +3,7 @@ import Papa from "papaparse";
 import { saveAs } from "file-saver";
 import jsPDF from "jspdf";
 import "jspdf-autotable";
-import MainLogo from "../../images/MainLogo.png";
+import MainLogo from "../../images/withText.png";
 
 export const exportToCSV = (
   headers,

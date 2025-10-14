@@ -103,7 +103,7 @@ const Sidebar = ({ user }) => {
                 src={LogoM}
                 alt="Logo"
                 className={`transition-all duration-300 ${
-                  collapsed ? "w-10" : "w-40"
+                  collapsed ? "w-8" : "w-32"
                 }`}
                 draggable="false"
               />
