@@ -157,7 +157,7 @@ function Login() {
 
         // Check if user is already logged in on another device
         if (isLogged === true) {
-          setError("This account is already logged in on another device.");
+          setError("This account is currently active in another session.");
           setLoading(false);
           return;
         }
