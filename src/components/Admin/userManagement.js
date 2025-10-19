@@ -522,6 +522,7 @@ export default function UserManagement() {
         address: form.address.trim(),
         createdAt: new Date().toISOString(),
         permissions: rolePermissionsMap[form.role] || [],
+        isLogged: false,
       });
 
       // Log activity

@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { getAuth, signOut } from "firebase/auth";
+import { doc, updateDoc } from "firebase/firestore";
+import { db } from "../../firebase"; // Adjust path as needed
 import { navLinks } from "../Config/navLinks";
 import LogoM from "../../images/withoutText.png";
 import IconLogout from "../../images/logout.svg";
@@ -19,6 +21,7 @@ const Sidebar = ({ user }) => {
   const [activeLink, setActiveLink] = useState(location.pathname);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [openMenus, setOpenMenus] = useState({}); // Track which parent menus are open
+  const [loggingOut, setLoggingOut] = useState(false);
 
   useEffect(() => {
     setActiveLink(location.pathname);
@@ -61,11 +64,31 @@ const Sidebar = ({ user }) => {
   );
 
   const handleSignOut = async () => {
+    setLoggingOut(true);
+    
     try {
+      const currentUser = auth.currentUser;
+      
+      if (currentUser) {
+        // Update isLogged to false in Firestore before signing out
+        const userDocRef = doc(db, "users", currentUser.uid);
+        await updateDoc(userDocRef, {
+          isLogged: false,
+        });
+        console.log("User logged status updated to false");
+      }
+      
+      // Sign out from Firebase Auth
       await signOut(auth);
+      
+      // Redirect to login page
       window.location.href = "/";
+      
     } catch (error) {
+      console.error("Error signing out:", error);
       alert("Error signing out: " + error.message);
+      setLoggingOut(false);
+      setIsModalOpen(false);
     }
   };
 
@@ -234,6 +257,7 @@ const Sidebar = ({ user }) => {
               onClick={() => setIsModalOpen(true)}
               className="transition duration-200"
               aria-label="Sign out"
+              disabled={loggingOut}
             >
               <img
                 src={IconLogout}
@@ -253,7 +277,7 @@ const Sidebar = ({ user }) => {
           ) : (
             <button
               onClick={() => setIsModalOpen(true)}
-              className="flex items-center justify-center px-12 py-2 rounded-lg text-gray-800 font-semibold shadow-lg transition duration-200 hover:shadow-xl"
+              className="flex items-center justify-center px-12 py-2 rounded-lg text-gray-800 font-semibold shadow-lg transition duration-200 hover:shadow-xl disabled:opacity-60 disabled:cursor-not-allowed"
               style={{ backgroundColor: signOutColor, color: primaryColor }}
               onMouseEnter={(e) =>
                 (e.currentTarget.style.backgroundColor = signOutHoverColor)
@@ -261,8 +285,9 @@ const Sidebar = ({ user }) => {
               onMouseLeave={(e) =>
                 (e.currentTarget.style.backgroundColor = signOutColor)
               }
+              disabled={loggingOut}
             >
-              Sign Out
+              {loggingOut ? "Signing Out..." : "Sign Out"}
             </button>
           )}
         </div>
@@ -271,7 +296,7 @@ const Sidebar = ({ user }) => {
         {isModalOpen && (
           <div
             className="fixed inset-0 bg-black/50 backdrop-blur-sm flex justify-center items-center z-50"
-            onClick={() => setIsModalOpen(false)}
+            onClick={() => !loggingOut && setIsModalOpen(false)}
           >
             <div
               className="bg-white rounded-xl shadow-2xl p-8 w-full max-w-sm"
@@ -286,15 +311,38 @@ const Sidebar = ({ user }) => {
               <div className="flex justify-center gap-4">
                 <button
                   onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 rounded-lg bg-gray-200 text-gray-800 hover:bg-gray-300 transition"
+                  className="px-4 py-2 rounded-lg bg-gray-200 text-gray-800 hover:bg-gray-300 transition disabled:opacity-60 disabled:cursor-not-allowed"
+                  disabled={loggingOut}
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleSignOut}
-                  className="px-4 py-2 rounded-lg bg-gray-700 text-white hover:bg-blue-900 transition"
+                  className="px-4 py-2 rounded-lg bg-gray-700 text-white hover:bg-blue-900 transition disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
+                  disabled={loggingOut}
                 >
-                  Sign Out
+                  {loggingOut && (
+                    <svg
+                      className="h-4 w-4 animate-spin"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8v4A4 4 0 004 12z"
+                      />
+                    </svg>
+                  )}
+                  {loggingOut ? "Signing Out..." : "Sign Out"}
                 </button>
               </div>
             </div>

@@ -13,6 +13,7 @@ import {
   serverTimestamp,
   doc,
   onSnapshot,
+  updateDoc,
 } from "firebase/firestore";
 import { auth, db } from "../firebase";
 import { KeyRound, Eye, EyeOff } from "lucide-react";
@@ -140,14 +141,23 @@ function Login() {
 
       if (!querySnapshot.empty) {
         const userDoc = querySnapshot.docs[0];
-        const role = (userDoc.data().role || "").toLowerCase();
-        const status = userDoc.data().status;
-        const firstName = userDoc.data().firstName || "Unknown";
-        const lastName = userDoc.data().lastName || "User";
+        const userData = userDoc.data();
+        const role = (userData.role || "").toLowerCase();
+        const status = userData.status;
+        const isLogged = userData.isLogged || false;
+        const firstName = userData.firstName || "Unknown";
+        const lastName = userData.lastName || "User";
         const fullName = `${firstName} ${lastName}`;
 
         if (status === "Inactive") {
           setError("Your account is inactive. Please contact support.");
+          setLoading(false);
+          return;
+        }
+
+        // Check if user is already logged in on another device
+        if (isLogged === true) {
+          setError("This account is already logged in on another device.");
           setLoading(false);
           return;
         }
@@ -163,6 +173,11 @@ function Login() {
         } else {
           displayRole = role;
         }
+
+        // Update isLogged to true
+        await updateDoc(doc(db, "users", userDoc.id), {
+          isLogged: true,
+        });
 
         // Log login activity
         await addDoc(collection(db, "systemLogs"), {

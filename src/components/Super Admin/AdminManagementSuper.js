@@ -501,6 +501,7 @@ export default function AdminManagementSuper() {
         address: form.address.trim(),
         permissions: permissions,
         createdAt: new Date().toISOString(),
+        isLogged: false,
       });
 
       setToastMessage("New admin added successfully!");
