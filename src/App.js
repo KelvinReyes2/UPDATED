@@ -61,13 +61,7 @@ function App() {
             : null
         );
 
-        // Set isLogged to true when user logs in
-        if (snap.exists()) {
-          await updateDoc(ref, {
-            isLogged: true,
-            lastLoginTime: new Date().toISOString()
-          });
-        }
+        // Don't set isLogged here - it will be set in login.js when user actually logs in
       } else {
         setUser(null);
       }

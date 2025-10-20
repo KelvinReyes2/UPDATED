@@ -174,9 +174,10 @@ function Login() {
           displayRole = role;
         }
 
-        // Update isLogged to true
+        // Update isLogged to true and set lastLoginTime
         await updateDoc(doc(db, "users", userDoc.id), {
           isLogged: true,
+          lastLoginTime: new Date().toISOString(),
         });
 
         // Log login activity
