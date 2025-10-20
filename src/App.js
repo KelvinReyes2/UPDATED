@@ -5,8 +5,8 @@ import {
   Route,
   Navigate,
 } from "react-router-dom";
-import { onAuthStateChanged } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
+import { onAuthStateChanged, signOut } from "firebase/auth";
+import { doc, getDoc, updateDoc, deleteField } from "firebase/firestore";
 
 import { auth, db } from "./firebase";
 
@@ -60,6 +60,19 @@ function App() {
               }
             : null
         );
+
+        // Set isLogged to true in Firebase and remove timestamp fields
+        if (snap.exists()) {
+          await updateDoc(ref, {
+            isLogged: true,
+            lastLoginTime: deleteField(),    // Remove from Firebase
+            lastLogoutTime: deleteField()    // Remove from Firebase
+          });
+          
+          // Store login time locally in localStorage
+          const loginTime = new Date().toISOString();
+          localStorage.setItem(`lastLoginTime_${firebaseUser.uid}`, loginTime);
+        }
       } else {
         setUser(null);
       }
@@ -70,6 +83,35 @@ function App() {
     return () => unsub();
   }, []);
 
+  // Handle tab close/browser close - set isLogged to false
+  useEffect(() => {
+    const handleBeforeUnload = async () => {
+      if (user && user.uid) {
+        const ref = doc(db, "users", user.uid);
+        
+        // Set isLogged to false in Firebase only
+        await updateDoc(ref, {
+          isLogged: false
+        });
+
+        // Store logout time locally in localStorage
+        const logoutTime = new Date().toISOString();
+        localStorage.setItem(`lastLogoutTime_${user.uid}`, logoutTime);
+
+        // Sign out the user
+        await signOut(auth);
+      }
+    };
+
+    // Add event listener for tab/window close
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
+    // Cleanup
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [user]);
+
   // Only show blank screen on initial page load, not on refreshes
   if (initialLoad && loading) {
     return <div style={{ opacity: 0 }}></div>;
@@ -78,12 +120,12 @@ function App() {
   return (
     <Router>
       <Routes>
-        {/* Public */}
+        {/* Default route - shows login page */}
+        <Route path="/" element={<Login />} />
         <Route path="/login" element={<Login />} />
 
         {/* Protected Layout */}
         <Route
-          path="/"
           element={
             <PrivateRoute
               allowedRoles={["Admin", "Cashier", "Super"]}
@@ -96,7 +138,7 @@ function App() {
         >
           {/* Admin Routes */}
           <Route
-            path="dashboardAdmin"
+            path="/dashboardAdmin"
             element={
               <PrivateRoute
                 allowedRoles={["Admin"]}
@@ -109,7 +151,7 @@ function App() {
             }
           />
           <Route
-            path="unitTracking"
+            path="/unitTracking"
             element={
               <PrivateRoute
                 allowedRoles={["Admin"]}
@@ -122,7 +164,7 @@ function App() {
             }
           />
           <Route
-            path="userManagement"
+            path="/userManagement"
             element={
               <PrivateRoute
                 allowedRoles={["Admin"]}
@@ -135,7 +177,7 @@ function App() {
             }
           />
           <Route
-            path="driverDispatch"
+            path="/driverDispatch"
             element={
               <PrivateRoute
                 allowedRoles={["Admin"]}
@@ -148,7 +190,7 @@ function App() {
             }
           />
           <Route
-            path="vehicleManagement"
+            path="/vehicleManagement"
             element={
               <PrivateRoute
                 allowedRoles={["Admin"]}
@@ -161,7 +203,7 @@ function App() {
             }
           />
           <Route
-            path="Reports/transactionOverview"
+            path="/Reports/transactionOverview"
             element={
               <PrivateRoute
                 allowedRoles={["Admin"]}
@@ -174,7 +216,7 @@ function App() {
             }
           />
           <Route
-            path="Reports/quotaSummary"
+            path="/Reports/quotaSummary"
             element={
               <PrivateRoute
                 allowedRoles={["Admin"]}
@@ -187,7 +229,7 @@ function App() {
             }
           />
           <Route
-            path="Reports/tripLogs"
+            path="/Reports/tripLogs"
             element={
               <PrivateRoute
                 allowedRoles={["Admin"]}
@@ -202,7 +244,7 @@ function App() {
 
           {/* Cashier Routes */}
           <Route
-            path="dashboardCashier"
+            path="/dashboardCashier"
             element={
               <PrivateRoute
                 allowedRoles={["Cashier"]}
@@ -215,7 +257,7 @@ function App() {
             }
           />
           <Route
-            path="fuelLogs"
+            path="/fuelLogs"
             element={
               <PrivateRoute
                 allowedRoles={["Cashier"]}
@@ -230,7 +272,7 @@ function App() {
 
           {/* Super Admin Routes */}
           <Route
-            path="dashboardSuper"
+            path="/dashboardSuper"
             element={
               <PrivateRoute
                 allowedRoles={["Super"]}
@@ -243,7 +285,7 @@ function App() {
             }
           />
           <Route
-            path="activityLogSuper"
+            path="/activityLogSuper"
             element={
               <PrivateRoute
                 allowedRoles={["Super"]}
@@ -256,7 +298,7 @@ function App() {
             }
           />
           <Route
-            path="AdminManagementSuper"
+            path="/AdminManagementSuper"
             element={
               <PrivateRoute
                 allowedRoles={["Super"]}
@@ -269,7 +311,7 @@ function App() {
             }
           />
           <Route
-            path="RouteManagementSuper"
+            path="/RouteManagementSuper"
             element={
               <PrivateRoute
                 allowedRoles={["Super"]}
@@ -282,7 +324,7 @@ function App() {
             }
           />
           <Route
-            path="QuotaManagementSuper"
+            path="/QuotaManagementSuper"
             element={
               <PrivateRoute
                 allowedRoles={["Super"]}
@@ -295,7 +337,7 @@ function App() {
             }
           />
           <Route
-            path="UACSuper"
+            path="/UACSuper"
             element={
               <PrivateRoute
                 allowedRoles={["Super"]}
@@ -308,7 +350,7 @@ function App() {
             }
           />
           <Route
-            path="PasswordSuper"
+            path="/PasswordSuper"
             element={
               <PrivateRoute
                 allowedRoles={["Super"]}
@@ -321,7 +363,7 @@ function App() {
             }
           />
           <Route
-            path="MaintenanceSuper"
+            path="/MaintenanceSuper"
             element={
               <PrivateRoute
                 allowedRoles={["Super"]}
