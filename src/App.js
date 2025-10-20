@@ -6,7 +6,7 @@ import {
   Navigate,
 } from "react-router-dom";
 import { onAuthStateChanged, signOut } from "firebase/auth";
-import { doc, getDoc, updateDoc, deleteField } from "firebase/firestore";
+import { doc, getDoc, updateDoc } from "firebase/firestore";
 
 import { auth, db } from "./firebase";
 
@@ -61,17 +61,12 @@ function App() {
             : null
         );
 
-        // Set isLogged to true in Firebase and remove timestamp fields
+        // Set isLogged to true when user logs in
         if (snap.exists()) {
           await updateDoc(ref, {
             isLogged: true,
-            lastLoginTime: deleteField(),    // Remove from Firebase
-            lastLogoutTime: deleteField()    // Remove from Firebase
+            lastLoginTime: new Date().toISOString()
           });
-          
-          // Store login time locally in localStorage
-          const loginTime = new Date().toISOString();
-          localStorage.setItem(`lastLoginTime_${firebaseUser.uid}`, loginTime);
         }
       } else {
         setUser(null);
@@ -89,14 +84,11 @@ function App() {
       if (user && user.uid) {
         const ref = doc(db, "users", user.uid);
         
-        // Set isLogged to false in Firebase only
+        // Set isLogged to false when tab/browser closes
         await updateDoc(ref, {
-          isLogged: false
+          isLogged: false,
+          lastLogoutTime: new Date().toISOString()
         });
-
-        // Store logout time locally in localStorage
-        const logoutTime = new Date().toISOString();
-        localStorage.setItem(`lastLogoutTime_${user.uid}`, logoutTime);
 
         // Sign out the user
         await signOut(auth);
