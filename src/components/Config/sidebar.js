@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { getAuth, signOut } from "firebase/auth";
-import { doc, updateDoc } from "firebase/firestore";
+import { doc, updateDoc, collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../../firebase"; // Adjust path as needed
 import { navLinks } from "../Config/navLinks";
 import LogoM from "../../images/withoutText.png";
@@ -56,7 +56,18 @@ const Sidebar = ({ user }) => {
 
   if (!user) return null;
 
-  const { role, permissions = [] } = user;
+  const { role, permissions = [], firstName = "Unknown", lastName = "User" } = user;
+  const fullName = `${firstName} ${lastName}`;
+
+  // Map role to display role for logging
+  const getDisplayRole = (userRole) => {
+    const roleMap = {
+      super: "Super Admin",
+      admin: "System Admin",
+      cashier: "Cashier"
+    };
+    return roleMap[userRole?.toLowerCase()] || userRole;
+  };
 
   // Filter top-level links by role + permissions
   const filteredLinks = navLinks.filter(
@@ -76,6 +87,16 @@ const Sidebar = ({ user }) => {
           isLogged: false,
         });
         console.log("User logged status updated to false");
+
+        // Log sign out activity
+        const displayRole = getDisplayRole(role);
+        await addDoc(collection(db, "systemLogs"), {
+          timestamp: serverTimestamp(),
+          activity: "Logged out of the system",
+          role: displayRole,
+          performedBy: fullName,
+        });
+        console.log("Sign out activity logged");
       }
       
       // Sign out from Firebase Auth
