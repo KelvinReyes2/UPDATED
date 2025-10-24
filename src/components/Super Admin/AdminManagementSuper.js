@@ -500,7 +500,7 @@ export default function AdminManagementSuper() {
         telNo: form.telNo.trim(),
         address: form.address.trim(),
         permissions: permissions,
-        createdAt: new Date().toISOString(),
+        createdAt: serverTimestamp(),
         isLogged: false,
       });
 

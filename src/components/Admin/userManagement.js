@@ -520,7 +520,7 @@ export default function UserManagement() {
         status: form.status,
         telNo: form.telNo.trim(),
         address: form.address.trim(),
-        createdAt: new Date().toISOString(),
+        createdAt: serverTimestamp(),
         permissions: rolePermissionsMap[form.role] || [],
         isLogged: false,
       });
