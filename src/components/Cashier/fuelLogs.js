@@ -5,7 +5,6 @@ import {
   getDocs,
   addDoc,
   serverTimestamp,
-  updateDoc,
   getDoc,
   doc,
   orderBy,
@@ -398,7 +397,7 @@ const FuelLogsPage = () => {
     setForm({ driver: "", amount: "" });
   };
 
-  // Save Fuel Expense
+  // Save Fuel Expense (FIXED - removed fuelStatus update)
   const saveFuelExpense = async () => {
     try {
       setSaving(true);
@@ -432,8 +431,8 @@ const FuelLogsPage = () => {
         timestamp: serverTimestamp(),
       });
 
-      const driverRef = doc(db, "users", selectedDriver.uid);
-      await updateDoc(driverRef, { fuelStatus: "done" });
+      // REMOVED: The fuelStatus update to driver document
+      // await updateDoc(driverRef, { fuelStatus: "done" });
 
       await logSystemActivity(
         `Added fuel expense: ₱${parseFloat(form.amount).toFixed(2)} for ${selectedDriver.fullName}`,
